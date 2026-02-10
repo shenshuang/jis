@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
 <title>基金行情</title>
 <style>
-    /* 样式部分不变，保持原有设计 */
+    /* 基础样式保持原有 */
     * {
         margin: 0;
         padding: 0;
@@ -148,12 +148,6 @@
         flex: 1; border: 1px solid var(--gray); border-radius: 6px;
         padding: 6px 8px; font-size: 14px;
     }
-    .form-text {
-        width: 100%; height: 180px; /* 扩大结果显示区域 */
-        resize: none; font-size: 12px;
-        white-space: pre; overflow-wrap: normal; overflow-x: auto;
-        padding: 8px;
-    }
     .modal-btn {
         border: none; border-radius: 8px; padding: 8px 12px;
         font-size: 14px; cursor: pointer;
@@ -187,9 +181,45 @@
         background: rgba(255,255,255,0.9); padding: 12px 24px; border-radius: 8px;
         font-size: 14px; z-index: 99999; display: none;
     }
+
+    /* 全屏检测结果弹窗（核心简化样式） */
+    .fullscreen-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #fff;
+        z-index: 99999;
+        display: none;
+        padding: 20px;
+        box-sizing: border-box;
+    }
+    .fullscreen-modal-content {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    #fullscreenResult {
+        flex: 1;
+        overflow-y: auto;
+        font-size: 14px;
+        white-space: pre-wrap;
+        line-height: 1.5;
+    }
 </style>
 </head>
 <body>
+
+<!-- 全屏检测结果弹窗 -->
+<div class="fullscreen-modal" id="fullscreenModal">
+    <div class="fullscreen-modal-content">
+        <div id="fullscreenResult"></div>
+        <button class="modal-btn btn-default" onclick="closeFullscreenModal()">关闭</button>
+    </div>
+</div>
 
 <div class="right-center-time" id="rightCenterTime">最近查询: -</div>
 
@@ -308,27 +338,25 @@
         <div style="height:1px;background:var(--gray);margin:8px 0"></div>
         <div class="form-item">
             <label>接口获取数据失败默认显示基金名</label>
-            <input type="text" id="failName" value="狗屁基金">
+            <input type="text" id="failName" value="获取失败">
         </div>
         <div class="form-item">
             <label>历史净值涨跌幅获取失败默认值</label>
             <input type="number" id="failRate" value="9876543210">
         </div>
         <div style="height:1px;background:var(--gray);margin:8px 0"></div>
-        <!-- 实时估值接口测试（强化版） -->
+        <!-- 实时估值接口测试 -->
         <div class="form-item">
-            <label>检测实时估值接口（AJAX GET）</label>
+            <label>检测实时估值接口</label>
             <input type="text" id="testGzCode" placeholder="6位基金代码" value="019244">
         </div>
-        <button class="modal-btn btn-primary" onclick="testGzApi()">检测（显示全信息）</button>
-        <textarea class="form-text" id="testGzResult" readonly placeholder="点击检测后显示请求详情..."></textarea>
+        <button class="modal-btn btn-primary" onclick="testGzApi()">检测</button>
         <!-- 历史净值接口测试 -->
         <div class="form-item">
             <label>检测历史净值接口</label>
             <input type="text" id="testLsCode" placeholder="6位基金代码">
         </div>
         <button class="modal-btn btn-primary" onclick="testLsApi()">检测</button>
-        <textarea class="form-text" id="testLsResult" readonly></textarea>
         <button class="modal-btn btn-primary" onclick="checkAndFixHistory()">补充历史净值数据</button>
         <button class="modal-btn btn-primary" onclick="saveApiAndFailSettings()">保存全部</button>
         <button class="modal-btn btn-default" onclick="closeApiSettings()">关闭</button>
@@ -346,7 +374,7 @@ const FIRST_INIT = "FUND_FIRST_INIT";
 const MODIFY_LOG = "FUND_MODIFY_LOG";
 
 const DEFAULT_FAIL_VALUE = 9876543210;
-const DEFAULT_FAIL_NAME = "狗屁基金";
+const DEFAULT_FAIL_NAME = "获取失败";
 
 const defaultConfig = {
     showDay: 33,
@@ -376,6 +404,14 @@ let fundTempData = { today: {}, history: [], loading: false };
 let currentTab = "all";
 let currentSort = "today";
 let sortOrder = "desc";
+
+// 全屏弹窗控制
+function openFullscreenModal() {
+    document.getElementById("fullscreenModal").style.display = "block";
+}
+function closeFullscreenModal() {
+    document.getElementById("fullscreenModal").style.display = "none";
+}
 
 // 修改日志
 function getModifyLog() {
@@ -530,7 +566,7 @@ function copyCode(code) {
     });
 }
 
-// 【核心修改：强化实时估值接口测试（AJAX GET，显示全信息）】
+// 实时估值接口测试（点击后全屏展示）
 async function testGzApi() {
     const code = document.getElementById("testGzCode").value.trim();
     if (!/^\d{6}$/.test(code)) {
@@ -538,20 +574,16 @@ async function testGzApi() {
         return;
     }
 
-    const resultEl = document.getElementById("testGzResult");
-    resultEl.value = "=== 开始检测实时估值接口 ===\n";
-    resultEl.value += `检测时间：${getNowTime()}\n`;
-    resultEl.value += `基金代码：${code}\n\n`;
+    // 打开全屏弹窗，显示加载中
+    const resultEl = document.getElementById("fullscreenResult");
+    resultEl.innerHTML = "=== 开始检测实时估值接口 ===\n";
+    resultEl.innerHTML += `检测时间：${getNowTime()}\n`;
+    resultEl.innerHTML += `基金代码：${code}\n\n加载中...`;
+    openFullscreenModal();
 
     // 构造请求信息
     const requestMethod = "GET";
     const requestUrl = `https://fund.1234567.com.cn/js/${code}.js`;
-    resultEl.value += `【请求信息】\n`;
-    resultEl.value += `请求方式：${requestMethod}\n`;
-    resultEl.value += `请求地址：${requestUrl}\n`;
-    resultEl.value += `请求头：默认（fetch自动携带）\n\n`;
-
-    showLoading("接口检测中...");
 
     try {
         // 发起AJAX GET请求
@@ -561,59 +593,60 @@ async function testGzApi() {
             cache: "no-cache"
         });
 
-        resultEl.value += `【响应信息】\n`;
-        resultEl.value += `响应状态码：${response.status}（${response.statusText}）\n`;
-        resultEl.value += `响应头：\n`;
-        response.headers.forEach((value, key) => {
-            resultEl.value += `  ${key}: ${value}\n`;
+        // 填充请求+响应信息
+        resultEl.innerHTML = "=== 开始检测实时估值接口 ===\n";
+        resultEl.innerHTML += `检测时间：${getNowTime()}\n`;
+        resultEl.innerHTML += `基金代码：${code}\n\n`;
+        resultEl.innerHTML += `【请求信息】\n`;
+        resultEl.innerHTML += `请求方式：${requestMethod}\n`;
+        resultEl.innerHTML += `请求地址：${requestUrl}\n\n`;
+
+        resultEl.innerHTML += `【响应信息】\n`;
+        resultEl.innerHTML += `状态码：${response.status}（${response.statusText}）\n`;
+        resultEl.innerHTML += `响应头：\n`;
+        response.headers.forEach((val, key) => {
+            resultEl.innerHTML += `  ${key}: ${val}\n`;
         });
 
         if (response.ok) {
-            // 成功获取响应
+            // 显示原始数据+解析结果
             const rawData = await response.text();
-            resultEl.value += `\n【原始响应数据】\n${rawData}\n\n`;
+            resultEl.innerHTML += `\n【原始数据】\n${rawData}\n\n`;
 
-            // 解析数据（接口返回格式：jsonpgz({"fundcode":"xxx",...})）
+            // 解析基金数据
             try {
-                const jsonMatch = rawData.match(/jsonpgz\((\{.*\})\)/);
-                if (jsonMatch && jsonMatch[1]) {
-                    const parseData = JSON.parse(jsonMatch[1]);
-                    resultEl.value += `【解析后数据】\n`;
-                    resultEl.value += `基金代码：${parseData.fundcode || '未知'}\n`;
-                    resultEl.value += `基金名称：${parseData.name || '未知'}\n`;
-                    resultEl.value += `实时估值涨跌幅：${parseData.gszzl || '0'}%\n`;
-                    resultEl.value += `单位净值：${parseData.dwjz || '未知'}\n`;
-                    resultEl.value += `估算净值：${parseData.gsz || '未知'}\n`;
-                    resultEl.value += `更新时间：${parseData.gztime || '未知'}\n`;
-                } else {
-                    resultEl.value += `\n【解析失败】\n原始数据格式不符合预期，无法提取JSON数据\n`;
-                }
-            } catch (parseErr) {
-                resultEl.value += `\n【解析失败】\n错误信息：${parseErr.message}\n`;
+                const jsonStr = rawData.match(/jsonpgz\((\{.*\})\)/)[1];
+                const fundData = JSON.parse(jsonStr);
+                resultEl.innerHTML += `【解析后基金信息】\n`;
+                resultEl.innerHTML += `名称：${fundData.name || '未知'}\n`;
+                resultEl.innerHTML += `实时估值涨跌幅：${fundData.gszzl || '0'}%\n`;
+                resultEl.innerHTML += `单位净值：${fundData.dwjz || '未知'}\n`;
+                resultEl.innerHTML += `估算净值：${fundData.gsz || '未知'}\n`;
+                resultEl.innerHTML += `更新时间：${fundData.gztime || '未知'}\n`;
+            } catch (e) {
+                resultEl.innerHTML += `\n【解析失败】\n数据格式不符合要求\n`;
             }
         } else {
-            resultEl.value += `\n【响应失败】\n状态码非200-299，无法获取数据\n`;
+            resultEl.innerHTML += `\n【响应失败】\n状态码非200-299\n`;
         }
 
     } catch (error) {
-        // 捕获跨域或网络错误
-        resultEl.value += `\n【请求失败】\n错误类型：${error.name}\n`;
-        resultEl.value += `错误信息：${error.message}\n\n`;
-        resultEl.value += `【常见原因】\n`;
-        resultEl.value += `1. 跨域拦截：接口未配置CORS响应头（Access-Control-Allow-Origin）\n`;
-        resultEl.value += `2. 网络问题：当前网络无法访问天天基金接口\n`;
-        resultEl.value += `3. 接口失效：该接口已被监管下架或限制访问\n`;
+        // 捕获跨域/网络错误
+        resultEl.innerHTML += `\n【请求失败】\n错误：${error.message}\n`;
+        resultEl.innerHTML += `常见原因：跨域拦截/接口失效/网络问题\n`;
     } finally {
-        hideLoading();
-        resultEl.value += `\n=== 检测结束 ===`;
+        resultEl.innerHTML += `\n=== 检测结束 ===`;
     }
 }
 
-// 历史净值接口测试（保持原有逻辑）
+// 历史净值接口测试
 async function testLsApi() {
     const code = document.getElementById("testLsCode").value.trim();
-    if (!/^\d{6}$/.test(code)) return alert("请输入6位代码");
-    showLoading("测试中...");
+    if (!/^\d{6}$/.test(code)) {
+        alert("请输入6位代码");
+        return;
+    }
+    showLoading("检测中...");
     
     let result = null;
     await new Promise(resolve => {
@@ -634,11 +667,14 @@ async function testLsApi() {
     });
     
     hideLoading();
-    const resultEl = document.getElementById("testLsResult");
-    resultEl.value = result? JSON.stringify(result, null, 2) : "请求失败";
+    if (result) {
+        alert(`检测成功：\n基金名：${result.name}\n最新净值：${result.LSJZList[0]?.DWJZ || '未知'}`);
+    } else {
+        alert("检测失败：接口无响应");
+    }
 }
 
-// 天天基金JSONP接口（用于正常获取数据，绕开跨域）
+// 天天基金JSONP接口（正常获取估值）
 window._ttjjCallbacks = {};
 function requestGz(code) {
     return new Promise(resolve => {
@@ -648,26 +684,23 @@ function requestGz(code) {
         s.id = "gz_" + code;
         s.src = `https://fund.1234567.com.cn/js/${code}.js?callback=_ttjjCallbacks.${code}&_=${Date.now()}`;
         s.onerror = () => {
-            if (window._ttjjCallbacks[code]) {
-                window._ttjjCallbacks[code](false);
-                delete window._ttjjCallbacks[code];
-            }
+            window._ttjjCallbacks[code]?.(false);
+            delete window._ttjjCallbacks[code];
         };
         document.body.appendChild(s);
     });
 }
 
-// 天天基金接口回调
+// JSONP回调
 window.jsonpgz = res => {
-    if (!res ||!res.fundcode) return;
+    if (!res?.fundcode) return;
     const cb = window._ttjjCallbacks[res.fundcode];
     if (cb) {
-        const v = Number(res.gszzl || 0);
         const fail = getFailSettings();
         fundTempData.today[res.fundcode] = {
-            val: v,
-            text: v.toFixed(2) + "%",
-            cls: v >= 0? "text-red" : "text-green",
+            val: Number(res.gszzl || 0),
+            text: (res.gszzl || 0).toFixed(2) + "%",
+            cls: res.gszzl >= 0 ? "text-red" : "text-green",
             name: res.name || fail.name
         };
         cb(true);
@@ -675,7 +708,7 @@ window.jsonpgz = res => {
     }
 };
 
-// 获取今日估值（正常使用时用JSONP）
+// 获取今日估值
 async function getTodayData(funds) {
     fundTempData.today = {};
     if (funds.length === 0) return;
@@ -700,10 +733,6 @@ async function getTodayData(funds) {
 
 // 历史净值接口
 async function loadOneHistory(code) {
-    const cfg = getConfig();
-    const days = cfg.showDay;
-    const api = getApi();
-    
     return new Promise(resolve => {
         const s = document.createElement("script");
         s.id = "ls_" + code;
@@ -711,23 +740,20 @@ async function loadOneHistory(code) {
         s.onload = () => {
             try {
                 const fi = window.fundinfo;
-                if (!fi ||!Array.isArray(fi.LSJZList)) throw new Error();
+                if (!fi ||!fi.LSJZList?.length) throw new Error();
                 
-                const list = fi.LSJZList;
                 const cache = getHistoryCache();
-                for (let i = 0; i < days && i < list.length; i++) {
-                    const item = list[i];
-                    const v = Number(item.JZZZL || 0);
-                    const dt = item.FSRQ;
-                    const key = dt.replace(/-/g, "");
+                const days = getConfig().showDay;
+                fi.LSJZList.slice(0, days).forEach(item => {
+                    const key = item.FSRQ.replace(/-/g, "");
                     if (!cache[key]) cache[key] = {};
                     cache[key][code] = {
-                        val: v,
-                        text: v.toFixed(2) + "%",
-                        cls: v >= 0? "text-red" : "text-green",
-                        date: dt
+                        val: Number(item.JZZZL || 0),
+                        text: (item.JZZZL || 0).toFixed(2) + "%",
+                        cls: item.JZZZL >= 0 ? "text-red" : "text-green",
+                        date: item.FSRQ
                     };
-                }
+                });
                 setHistoryCache(cache);
                 resolve(true);
             } catch (e) {
@@ -751,7 +777,7 @@ async function batchLoadHistory(codes) {
     for (let i = 0; i < codes.length; i += batch) {
         const group = codes.slice(i, i + batch);
         const res = await Promise.all(group.map(c => loadOneHistory(c)));
-        res.forEach(r => r? ok++ : fail++);
+        res.forEach(r => r ? ok++ : fail++);
         await delay(1500);
     }
     alert(`成功：${ok} 只，失败：${fail} 只`);
@@ -774,7 +800,7 @@ function calcTotal(code, n) {
     for (let i = 1; i <= n; i++) {
         const key = getDateKey(i);
         const val = cache[key]?.[code]?.val;
-        if (val!= null && val!== fail.rate) sum += val;
+        if (val != null && val !== fail.rate) sum += val;
     }
     return Math.round(sum * 100)/100;
 }
@@ -797,7 +823,7 @@ async function fetchAll() {
         }
         updateQueryTime();
     } catch (e) {
-        console.error("拉取数据失败：", e);
+        console.error("拉取失败：", e);
     }
     
     fundTempData.loading = false;
@@ -841,28 +867,22 @@ function render() {
     });
     
     list.sort((a, b) => {
-        const va = a[currentSort]?? 0;
-        const vb = b[currentSort]?? 0;
-        return sortOrder === "desc"? vb - va : va - vb;
+        const va = a[currentSort] ?? 0;
+        const vb = b[currentSort] ?? 0;
+        return sortOrder === "desc" ? vb - va : va - vb;
     });
     
     let html = "";
     list.forEach(item => {
         let operateTip = "";
-        if (item.todayOperate === "buy") {
-            operateTip = `<span class="tip tip-record">曾买入</span>`;
-        } else if (item.todayOperate === "sell") {
-            operateTip = `<span class="tip tip-record">曾卖出</span>`;
-        }
+        if (item.todayOperate === "buy") operateTip = `<span class="tip tip-record">曾买入</span>`;
+        if (item.todayOperate === "sell") operateTip = `<span class="tip tip-record">曾卖出</span>`;
         
         let tipHtml = "";
         const val = item.today;
-        if (val!== fail.rate) {
-            if (val >= cfg.sellLine) {
-                tipHtml = `<span class="tip tip-sell">卖(${cfg.sellLine}%)</span>`;
-            } else if (val <= -cfg.buyLine) {
-                tipHtml = `<span class="tip tip-buy">买(${cfg.buyLine}%)</span>`;
-            }
+        if (val !== fail.rate) {
+            if (val >= cfg.sellLine) tipHtml = `<span class="tip tip-sell">卖(${cfg.sellLine}%)</span>`;
+            if (val <= -cfg.buyLine) tipHtml = `<span class="tip tip-buy">买(${cfg.buyLine}%)</span>`;
         }
         
         html += `
@@ -880,8 +900,7 @@ function render() {
                     <div class="data-item">
                         <span class="data-label">今日</span>
                         <span class="${item.todayData.cls} data-value">${item.todayData.text}</span>
-                        ${operateTip}
-                        ${tipHtml}
+                        ${operateTip}${tipHtml}
                     </div>`;
         
         item.historyData.forEach((h, i) => {
@@ -1095,7 +1114,7 @@ function addFund() {
     const idx = document.getElementById("selPlate").value;
     const code = document.getElementById("fundCode").value.trim();
     if (!idx) return alert("请选板块");
-    if (!/^\d{6}$/.test(code)) return alert("6位代码");
+    if (!/^\d{6}$/.test(code)) return alert("请输入6位代码");
     const p = getPlates();
     if (p[idx].funds.includes(code)) return alert("已存在");
     p[idx].funds.push(code);
@@ -1150,7 +1169,7 @@ window.onload = () => {
         fetchAll();
         updateLogDisplay();
     } catch (e) {
-        console.error("页面加载失败：", e);
+        console.error("加载失败：", e);
         document.getElementById("container").innerHTML = `<div style="text-align:center;padding:40px;color:var(--sell)">页面加载出错，请刷新重试</div>`;
         hideLoading();
     }
