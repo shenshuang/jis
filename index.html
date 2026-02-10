@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
 <title>基金行情</title>
 <style>
+    /* 样式部分不变，和之前一致 */
     * {
         margin: 0;
         padding: 0;
@@ -525,19 +526,45 @@ function copyCode(code) {
     });
 }
 
-// 【修复：实时估值接口（东方财富官方）】
-async function requestGz(code) {
-    try {
-        const res = await fetch(`https://fundapi.eastmoney.com/fundgzvalue/get?fundcode=${code}&pageIndex=1&pageSize=1&_=${Date.now()}`);
-        if (!res.ok) return null;
-        const data = await res.json();
-        return data?.Data?.[0] || null;
-    } catch (e) {
-        return null;
-    }
+// 【核心修改：改用天天基金的JSONP接口】
+window._ttjjCallbacks = {};
+function requestGz(code) {
+    return new Promise(resolve => {
+        removeScript("gz_" + code);
+        window._ttjjCallbacks[code] = resolve;
+        // 天天基金实时估值接口（JSONP）
+        const s = document.createElement("script");
+        s.id = "gz_" + code;
+        s.src = `https://fund.1234567.com.cn/js/${code}.js?callback=_ttjjCallbacks.${code}&_=${Date.now()}`;
+        s.onerror = () => {
+            if (window._ttjjCallbacks[code]) {
+                window._ttjjCallbacks[code](false);
+                delete window._ttjjCallbacks[code];
+            }
+        };
+        document.body.appendChild(s);
+    });
 }
 
-// 【修复：获取今日估值】
+// 天天基金接口回调
+window.jsonpgz = res => {
+    if (!res ||!res.fundcode) return;
+    const cb = window._ttjjCallbacks[res.fundcode];
+    if (cb) {
+        const v = Number(res.gszzl || 0);
+        const fail = getFailSettings();
+        fundTempData.today[res.fundcode] = {
+            val: v,
+            text: v.toFixed(2) + "%",
+            cls: v >= 0? "text-red" : "text-green",
+            name: res.name || fail.name
+        };
+        cb(true);
+        delete window._ttjjCallbacks[res.fundcode];
+    }
+};
+
+// 获取今日估值
 async function getTodayData(funds) {
     fundTempData.today = {};
     if (funds.length === 0) return;
@@ -546,33 +573,22 @@ async function getTodayData(funds) {
     const fail = getFailSettings();
     const tasks = funds.map(code => {
         return retryWithTimeout(async () => {
-            const data = await requestGz(code);
-            if (data) {
-                const v = Number(data.Gszzl || 0);
-                fundTempData.today[code] = {
-                    val: v,
-                    text: v.toFixed(2) + "%",
-                    cls: v >= 0? "text-red" : "text-green",
-                    name: data.Name || fail.name
-                };
-                return true;
-            }
+            const success = await requestGz(code);
+            if (success) return true;
+            // 失败时填充默认值
+            fundTempData.today[code] = {
+                val: fail.rate,
+                text: "失败",
+                cls: "text-gray",
+                name: fail.name
+            };
             return false;
-        }, api.retryGz).then(ok => {
-            if (!ok) {
-                fundTempData.today[code] = {
-                    val: fail.rate,
-                    text: "失败",
-                    cls: "text-gray",
-                    name: fail.name
-                };
-            }
-        });
+        }, api.retryGz);
     });
     await Promise.all(tasks);
 }
 
-// 【修复：历史净值接口】
+// 历史净值接口
 async function loadOneHistory(code) {
     const cfg = getConfig();
     const days = cfg.showDay;
@@ -909,9 +925,11 @@ async function testGzApi() {
     if (!/^\d{6}$/.test(code)) return alert("请输入6位代码");
     showLoading("测试中...");
     
-    const data = await requestGz(code);
+    fundTempData.today = {};
+    const success = await requestGz(code);
     hideLoading();
-    document.getElementById("testGzResult").value = data? JSON.stringify(data, null, 2) : "请求失败";
+    const res = fundTempData.today[code];
+    document.getElementById("testGzResult").value = res? JSON.stringify(res, null, 2) : "请求失败";
 }
 
 async function testLsApi() {
