@@ -1,1 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>基金接口测试</title>
+<style>
+    body { padding: 20px; font-family: system-ui; }
+    .container { max-width: 500px; margin: 0 auto; }
+    input { width: 200px; padding: 8px; margin-right: 8px; }
+    button { padding: 8px 16px; cursor: pointer; }
+    .result { margin-top: 20px; padding: 10px; border: 1px solid #eee; border-radius: 6px; }
+    .success { color: #059669; }
+    .error { color: #dc2629; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h3>基金实时估值查询（接口：fundgz.1234567.com.cn）</h3>
+    <div>
+        <input type="text" id="fundCode" placeholder="输入6位基金代码（如019244）" value="019244">
+        <button onclick="queryFund()">查询</button>
+    </div>
+    <div class="result" id="result"></div>
+</div>
 
+<script>
+// 配置：PHP转发接口地址 + 基金接口模板
+const PROXY_URL = "proxy.php";
+const FUND_API_TEMPLATE = "https://fundgz.1234567.com.cn/js/{code}.js?_={timestamp}";
+
+// 全局回调函数（用于接收接口返回的JSONP数据）
+window.jsonpgz = function(fundData) {
+    const resultEl = document.getElementById("result");
+    // 解析并展示数据
+    const html = `
+        <div class="success">查询成功！</div>
+        <p>基金名称：${fundData.name || '未知'}</p>
+        <p>基金代码：${fundData.fundcode || '未知'}</p>
+        <p>实时估值涨跌幅：<strong>${fundData.gszzl || 0}%</strong></p>
+        <p>估算净值：${fundData.gsz || 0}</p>
+        <p>单位净值：${fundData.dwjz || 0}</p>
+        <p>更新时间：${fundData.gztime || '暂无'}</p>
+    `;
+    resultEl.innerHTML = html;
+};
+
+// 发起查询（HTML构造请求地址，通过PHP转发）
+async function queryFund() {
+    const code = document.getElementById("fundCode").value.trim();
+    const resultEl = document.getElementById("result");
+    
+    // 验证输入
+    if (!/^\d{6}$/.test(code)) {
+        resultEl.innerHTML = '<div class="error">请输入有效的6位基金代码！</div>';
+        return;
+    }
+    
+    // 构造目标接口地址（HTML控制请求参数）
+    const targetUrl = FUND_API_TEMPLATE
+        .replace("{code}", code)
+        .replace("{timestamp}", Date.now());
+    
+    // 拼接PHP转发地址
+    const proxyUrl = `${PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
+    
+    try {
+        resultEl.innerHTML = "查询中...";
+        // 动态创建script标签发起请求（适配JSONP接口）
+        const script = document.createElement("script");
+        script.src = proxyUrl;
+        script.onerror = () => {
+            resultEl.innerHTML = '<div class="error">请求失败，请重试！</div>';
+            script.remove();
+        };
+        document.body.appendChild(script);
+    } catch (e) {
+        resultEl.innerHTML = `<div class="error">错误：${e.message}</div>`;
+    }
+}
+</script>
+</body>
+</html>
