@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-    <title>基金行情（真实数据版）</title>
+    <title>基金行情（稳定版）</title>
     <style>
         * {
             margin: 0;
@@ -412,9 +412,9 @@ function clearExpireCache() {
     setHistoryCache(newCache);
 }
 
-// ===================== 真实接口数据拉取（无跨域兼容）=====================
-// 1. 今日实时估值接口（天天基金公开接口，返回实时涨跌幅）
-window.fundGzCallback = function (res) {
+// ===================== 替换为稳定接口（解决加载失败问题）=====================
+// 1. 今日实时估值接口（使用天天基金官方JSONP接口，回调固定为jsonpgz）
+window.jsonpgz = function (res) {
     if (res && res.fundcode) {
         const code = res.fundcode;
         const gszzl = Number(res.gszzl || 0); // 实时涨跌幅
@@ -428,24 +428,42 @@ window.fundGzCallback = function (res) {
     }
 };
 
-// 2. 历史净值接口（东方财富公开接口，返回T-n日涨跌幅）
-window.fundLsCallback = function (res, dayIdx, code) {
-    if (res && res.Data && res.Data.LSJZ && res.Data.LSJZ.length > 0) {
-        const item = res.Data.LSJZ[dayIdx - 1]; // 取第dayIdx天的历史数据（0=最新一天）
-        if (item) {
-            const jzzzl = Number(item.JZZZL || 0); // 历史涨跌幅
-            const cache = getHistoryCache();
-            if (!cache[dayIdx]) cache[dayIdx] = {};
-            cache[dayIdx][code] = {
-                val: jzzzl,
-                text: jzzzl.toFixed(2) + "%",
-                cls: jzzzl >= 0 ? "text-red" : "text-green",
-                date: item.FSRQ || "" // 记录历史日期
-            };
-            setHistoryCache(cache);
-        }
-    }
-};
+// 2. 历史净值接口（使用天天基金历史接口，更稳定）
+function getRealHistoryData(code, dayIdx) {
+    return new Promise(resolve => {
+        const s = document.createElement("script");
+        s.id = `ls_${code}_${dayIdx}`;
+        // 天天基金历史接口（page=${dayIdx} 表示第dayIdx天前的数据）
+        s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
+        s.onload = function() {
+            try {
+                // 接口返回的全局变量是fundinfo（包含历史净值）
+                const fundInfo = window.fundinfo;
+                if (fundInfo && fundInfo.LSJZList && fundInfo.LSJZList.length >= dayIdx) {
+                    const item = fundInfo.LSJZList[dayIdx - 1]; // 取第dayIdx天前的数据
+                    const jzzzl = Number(item.JZZZL || 0);
+                    const cache = getHistoryCache();
+                    if (!cache[dayIdx]) cache[dayIdx] = {};
+                    cache[dayIdx][code] = {
+                        val: jzzzl,
+                        text: jzzzl.toFixed(2) + "%",
+                        cls: jzzzl >= 0 ? "text-red" : "text-green",
+                        date: item.FSRQ || ""
+                    };
+                    setHistoryCache(cache);
+                }
+            } catch (e) {}
+            resolve();
+            removeScript(s.id);
+            delete window.fundinfo; // 清理全局变量
+        };
+        s.onerror = function() {
+            resolve();
+            removeScript(s.id);
+        };
+        document.body.appendChild(s);
+    });
+}
 
 // 移除已加载的script标签（避免冗余）
 function removeScript(id) {
@@ -465,8 +483,8 @@ function getRealTodayData(funds) {
             removeScript("gz_" + code);
             const s = document.createElement("script");
             s.id = "gz_" + code;
-            // 真实接口地址，添加随机参数避免缓存
-            s.src = `https://fundgz.1234567.com.cn/js/${code}.js?rtime=${Date.now()}&callback=fundGzCallback`;
+            // 稳定接口：天天基金JSONP（回调固定为jsonpgz）
+            s.src = `https://fundgz.1234567.com.cn/js/${code}.js?rtime=${Date.now()}`;
             s.onload = () => {
                 count++;
                 if (count === total) resolve();
@@ -481,49 +499,14 @@ function getRealTodayData(funds) {
     });
 }
 
-// 拉取单天历史真实数据（批量请求所有基金）
-function getRealHistoryData(funds, dayIdx) {
-    return new Promise(resolve => {
-        const cache = getHistoryCache();
-        // 已缓存则直接返回，未缓存则请求
-        if (cache[dayIdx] && Object.keys(cache[dayIdx]).length === funds.length) {
-            resolve();
-            return;
-        }
-
-        let count = 0;
-        const total = funds.length;
-        if (total === 0) { resolve(); return; }
-
-        funds.forEach(code => {
-            removeScript("ls_" + code + "_" + dayIdx);
-            const s = document.createElement("script");
-            s.id = "ls_" + code + "_" + dayIdx;
-            // 真实历史接口：pageIndex=1 表示最近1天，pageSize=10 确保能获取到dayIdx天前的数据
-            s.src = `https://fund.eastmoney.com/f10/api/lspz_his.aspx?callback=function(res){fundLsCallback(res,${dayIdx},'${code}')}&fundCode=${code}&pageIndex=1&pageSize=10`;
-            s.onload = () => {
-                count++;
-                if (count === total) resolve();
-            };
-            s.onerror = () => {
-                count++;
-                const cache = getHistoryCache();
-                if (!cache[dayIdx]) cache[dayIdx] = {};
-                cache[dayIdx][code] = { val: 0, text: "0.00%", cls: "text-red", date: "数据加载失败" };
-                setHistoryCache(cache);
-                if (count === total) resolve();
-            };
-            document.body.appendChild(s);
-        });
-    });
-}
-
 // 批量拉取所有历史真实数据（按配置的showDay拉取T-1~T-showDay）
 async function getAllRealHistory(funds) {
     const cfg = getConfig();
     clearExpireCache(); // 先清理超期缓存
     for (let i = 1; i <= cfg.showDay; i++) {
-        await getRealHistoryData(funds, i); // 依次拉取T-1到T-showDay的数据
+        for (const code of funds) {
+            await getRealHistoryData(code, i); // 逐个基金拉取历史数据
+        }
     }
 }
 
