@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-    <title>基金行情（稳定版）</title>
+    <title>基金行情（支持0天历史）</title>
     <style>
         * {
             margin: 0;
@@ -312,7 +312,8 @@
         <div class="modal-title">更多操作</div>
         <div class="form-item">
             <label>展示历史天数</label>
-            <input type="number" id="showDay" value="3" min="1">
+            <!-- 关键修改：去掉min="1"，支持输入0 -->
+            <input type="number" id="showDay" value="3">
         </div>
         <div class="form-item">
             <label>缓存历史数据天数</label>
@@ -391,7 +392,7 @@ const SORT_ORDER = "SORT_ORDER";
 // 临时数据存储（今日+历史数据）
 let fundTempData = { today: {}, history: [], loading: false };
 
-// 默认配置
+// 默认配置（支持showDay=0）
 const defaultConfig = {
     showDay: 3, cacheDay: 15, sellLine: 0.1, buyLine: 0.1,
     tipRise: false, tipFall: false, tipInvest: false,
@@ -480,7 +481,7 @@ function getRealTodayData(funds) {
     });
 }
 
-// 2. 历史净值
+// 2. 历史净值（showDay=0时不执行）
 function getRealHistoryData(code, dayIdx) {
     return new Promise(resolve => {
         const cache = getHistoryCache();
@@ -521,13 +522,13 @@ function getRealHistoryData(code, dayIdx) {
     });
 }
 
-// 批量拉取历史数据
+// 批量拉取历史数据（showDay=0时直接跳过）
 async function getAllRealHistory(funds) {
     const cfg = getConfig();
+    if (cfg.showDay <= 0) return; // 关键修改：showDay=0时不加载历史数据
     clearExpireCache();
     const cache = getHistoryCache();
 
-    // 按新的展示天数拉取数据
     for (let i = 1; i <= cfg.showDay; i++) {
         const needRequestFunds = funds.filter(code => !cache[i] || !cache[i][code]);
         if (needRequestFunds.length === 0) continue;
@@ -549,16 +550,22 @@ async function fetchAllData() {
     const allFunds = [...new Set(plates.flatMap(p => p.funds).filter(code => code))];
 
     try {
-        await Promise.all([
-            getRealTodayData(allFunds),
-            getAllRealHistory(allFunds)
-        ]);
+        // showDay=0时只拉今日数据，不拉历史数据
+        if (cfg.showDay <= 0) {
+            await getRealTodayData(allFunds);
+            fundTempData.history = []; // 清空历史数据
+        } else {
+            await Promise.all([
+                getRealTodayData(allFunds),
+                getAllRealHistory(allFunds)
+            ]);
 
-        // 严格按新的展示天数组装历史数据
-        fundTempData.history = [];
-        const cache = getHistoryCache();
-        for (let i = 1; i <= cfg.showDay; i++) {
-            fundTempData.history.push(cache[i] || {});
+            // 按配置的展示天数组装历史数据
+            fundTempData.history = [];
+            const cache = getHistoryCache();
+            for (let i = 1; i <= cfg.showDay; i++) {
+                fundTempData.history.push(cache[i] || {});
+            }
         }
     } catch (e) {
         console.error("数据加载失败:", e);
@@ -640,15 +647,17 @@ function renderFundCard(item) {
                     <span class="${item.today.cls} data-value">${item.today.text}</span>
                 </div>`;
 
-    // 严格按配置的展示天数渲染历史数据
-    item.history.forEach((h, i) => {
-        cardHtml += `
-        <div class="data-item">
-            <span class="data-label">T-${i+1}</span>
-            <span class="${h.cls} data-value">${h.text}</span>
-            ${h.date ? `<span class="tip">${h.date}</span>` : ""}
-        </div>`;
-    });
+    // 关键修改：showDay>0时才渲染历史数据
+    if (item.history.length > 0) {
+        item.history.forEach((h, i) => {
+            cardHtml += `
+            <div class="data-item">
+                <span class="data-label">T-${i+1}</span>
+                <span class="${h.cls} data-value">${h.text}</span>
+                ${h.date ? `<span class="tip">${h.date}</span>` : ""}
+            </div>`;
+        });
+    }
 
     cardHtml += `</div></div></div>`;
     return cardHtml;
@@ -708,7 +717,7 @@ document.getElementById("orderSort").onclick = () => { localStorage.setItem(SORT
 
 function openSet() {
     const cfg = getConfig();
-    // 打开弹窗时同步显示当前配置（修复之前的显示不一致）
+    // 打开弹窗时显示当前配置（包括0）
     document.getElementById("showDay").value = cfg.showDay;
     document.getElementById("cacheDay").value = cfg.cacheDay;
     document.getElementById("sellLine").value = cfg.sellLine;
@@ -723,10 +732,10 @@ function openSet() {
 
 function closeSet() { document.getElementById("setMask").style.display = "none"; }
 
-// 修复：保存配置后强制重新拉取对应天数的历史数据
+// 保存配置（支持showDay=0）
 function saveSet() {
     const newConfig = {
-        showDay: parseInt(document.getElementById("showDay").value) || 3,
+        showDay: parseInt(document.getElementById("showDay").value) || 0, // 关键修改：默认0而非3
         cacheDay: parseInt(document.getElementById("cacheDay").value) || 15,
         sellLine: parseFloat(document.getElementById("sellLine").value) || 0.1,
         buyLine: parseFloat(document.getElementById("buyLine").value) || 0.1,
@@ -738,8 +747,7 @@ function saveSet() {
     };
     setConfig(newConfig);
     closeSet();
-    // 保存后强制重新拉取数据，确保展示天数生效
-    fetchAllData();
+    fetchAllData(); // 保存后重新拉取数据，确保配置生效
 }
 
 function openAdd() {
