@@ -404,6 +404,7 @@ let fundTempData = { today: {}, history: [], loading: false };
 let currentTab = "all";
 let currentSort = "today";
 let sortOrder = "desc";
+let currentTestCallback = null; // 存储当前检测的回调
 
 // 全屏弹窗控制
 function openFullscreenModal() {
@@ -411,7 +412,37 @@ function openFullscreenModal() {
 }
 function closeFullscreenModal() {
     document.getElementById("fullscreenModal").style.display = "none";
+    // 清理回调
+    if (currentTestCallback) {
+        delete window[currentTestCallback];
+        currentTestCallback = null;
+    }
 }
+
+// 全局JSONP回调（适配接口返回的jsonpgz）
+window.jsonpgz = function(res) {
+    const resultEl = document.getElementById("fullscreenResult");
+    try {
+        resultEl.innerHTML += `【请求结果】\n`;
+        resultEl.innerHTML += `状态：接口返回成功\n`;
+        resultEl.innerHTML += `【原始数据】\njsonpgz(${JSON.stringify(res, null, 2)})\n\n`;
+        resultEl.innerHTML += `【解析后基金信息】\n`;
+        resultEl.innerHTML += `名称：${res.name || '未知'}\n`;
+        resultEl.innerHTML += `实时估值涨跌幅：${res.gszzl || '0'}%\n`;
+        resultEl.innerHTML += `单位净值：${res.dwjz || '未知'}\n`;
+        resultEl.innerHTML += `估算净值：${res.gsz || '未知'}\n`;
+        resultEl.innerHTML += `更新时间：${res.gztime || '未知'}\n`;
+    } catch (e) {
+        resultEl.innerHTML += `【解析失败】\n错误信息：${e.message}\n`;
+    } finally {
+        resultEl.innerHTML += `\n=== 检测结束 ===`;
+        // 清理回调
+        if (currentTestCallback) {
+            delete window[currentTestCallback];
+            currentTestCallback = null;
+        }
+    }
+};
 
 // 修改日志
 function getModifyLog() {
@@ -566,7 +597,7 @@ function copyCode(code) {
     });
 }
 
-// 实时估值接口测试（所有信息显示到提示框）
+// 实时估值接口测试（适配jsonpgz回调）
 async function testGzApi() {
     const code = document.getElementById("testGzCode").value.trim();
     if (!/^\d{6}$/.test(code)) {
@@ -581,65 +612,31 @@ async function testGzApi() {
     resultEl.innerHTML += `检测时间：${getNowTime()}\n`;
     resultEl.innerHTML += `基金代码：${code}\n\n`;
     resultEl.innerHTML += `【请求信息】\n`;
-    resultEl.innerHTML += `请求方式：GET（前端脚本请求）\n`;
+    resultEl.innerHTML += `请求方式：JSONP\n`;
     resultEl.innerHTML += `请求地址：${apiUrl}\n`;
     resultEl.innerHTML += `请求头：User-Agent=${navigator.userAgent}\n`;
     resultEl.innerHTML += `请求状态：加载中...\n\n`;
     openFullscreenModal();
 
-    // 记录开始时间
-    const startTime = Date.now();
+    // 设置回调（接口返回的是jsonpgz）
+    currentTestCallback = "jsonpgz";
 
-    try {
-        // 尝试获取数据
-        const fetchRes = await fetch(apiUrl, {
-            method: "GET",
-            mode: "cors",
-            cache: "no-cache"
-        });
-        const rawData = await fetchRes.text();
-        
-        // 展示请求结果
-        resultEl.innerHTML += `【请求结果】\n`;
-        resultEl.innerHTML += `耗时：${Date.now() - startTime}ms\n`;
-        resultEl.innerHTML += `HTTP状态码：${fetchRes.status}（${fetchRes.statusText}）\n`;
-        resultEl.innerHTML += `响应头：\n`;
-        fetchRes.headers.forEach((val, key) => {
-            resultEl.innerHTML += `  ${key}: ${val}\n`;
-        });
-        resultEl.innerHTML += `\n【原始数据】\n${rawData}\n\n`;
-
-        // 解析数据
-        try {
-            const jsonMatch = rawData.match(/(\{.*\})/);
-            if (jsonMatch && jsonMatch[1]) {
-                const fundData = JSON.parse(jsonMatch[1]);
-                resultEl.innerHTML += `【解析后基金信息】\n`;
-                resultEl.innerHTML += `名称：${fundData.name || '未知'}\n`;
-                resultEl.innerHTML += `实时估值涨跌幅：${fundData.gszzl || '0'}%\n`;
-                resultEl.innerHTML += `单位净值：${fundData.dwjz || '未知'}\n`;
-                resultEl.innerHTML += `估算净值：${fundData.gsz || '未知'}\n`;
-                resultEl.innerHTML += `更新时间：${fundData.gztime || '未知'}\n`;
-            } else {
-                resultEl.innerHTML += `【解析失败】\n原始数据格式不符合JSON要求\n`;
-            }
-        } catch (parseErr) {
-            resultEl.innerHTML += `【解析失败】\n错误信息：${parseErr.message}\n`;
-        }
-
-    } catch (fetchErr) {
-        // 展示失败信息
+    // 创建JSONP请求
+    const script = document.createElement("script");
+    script.src = apiUrl;
+    script.type = "text/javascript";
+    
+    // 加载失败处理
+    script.onerror = function(event) {
         resultEl.innerHTML += `【请求失败】\n`;
-        resultEl.innerHTML += `耗时：${Date.now() - startTime}ms\n`;
-        resultEl.innerHTML += `错误类型：${fetchErr.name}\n`;
-        resultEl.innerHTML += `错误信息：${fetchErr.message}\n\n`;
-        resultEl.innerHTML += `【手动验证建议】\n`;
-        resultEl.innerHTML += `1. 直接在浏览器地址栏访问：${apiUrl}\n`;
-        resultEl.innerHTML += `2. 若能访问，复制返回的原始数据到下方：\n`;
-        resultEl.innerHTML += `（示例格式：jsonpgz({"fundcode":"019244","name":"xxx"})）\n`;
-    } finally {
-        resultEl.innerHTML += `\n=== 检测结束 ===`;
-    }
+        resultEl.innerHTML += `错误类型：${event.type}\n`;
+        resultEl.innerHTML += `错误信息：${event.message || "Load failed"}\n`;
+        resultEl.innerHTML += `=== 检测结束 ===`;
+        document.body.removeChild(script);
+        currentTestCallback = null;
+    };
+    
+    document.body.appendChild(script);
 }
 
 // 历史净值接口测试
@@ -685,7 +682,7 @@ function requestGz(code) {
         window._ttjjCallbacks[code] = resolve;
         const s = document.createElement("script");
         s.id = "gz_" + code;
-        s.src = `https://fundgz.1234567.com.cn/js/${code}.js?callback=_ttjjCallbacks.${code}&_=${Date.now()}`;
+        s.src = `https://fundgz.1234567.com.cn/js/${code}.js?_=${Date.now()}`;
         s.onerror = () => {
             window._ttjjCallbacks[code]?.(false);
             delete window._ttjjCallbacks[code];
