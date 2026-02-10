@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-    <title>基金行情（带买卖记录+弹窗提示）</title>
+    <title>基金行情（最终版）</title>
     <style>
         * {
             margin: 0;
@@ -42,15 +42,33 @@
         }
         .tab.active { background: var(--primary); color: #fff; }
 
+        /* 修复排序栏空白，让它填满宽度 */
         .sort-bar {
-            display: flex; gap: 6px; padding: 8px 12px;
-            background: #fff; border-bottom: 1px solid var(--gray);
+            display: flex;
+            gap: 0;
+            padding: 0;
+            background: #fff;
+            border-bottom: 1px solid var(--gray);
         }
         .sort-btn {
-            flex: 1; padding: 6px 0; border-radius: 8px;
-            font-size: 12px; background: var(--light); border: none; cursor: pointer;
+            flex: 1;
+            padding: 10px 0;
+            border-radius: 0;
+            font-size: 14px;
+            background: #fff;
+            border: none;
+            border-right: 1px solid var(--gray);
+            cursor: pointer;
+            color: var(--sub-text);
         }
-        .sort-btn.active { background: var(--primary); color: #fff; }
+        .sort-btn:last-child {
+            border-right: none;
+        }
+        .sort-btn.active {
+            background: var(--primary);
+            color: #fff;
+            border-right-color: var(--primary);
+        }
         .sort-arrow { margin-left: 4px; }
 
         .top-time {
@@ -174,9 +192,9 @@
     <div class="tab-bar" id="tabBar"></div>
     <div class="sort-bar">
         <button class="sort-btn active" data-key="today">今日 <span class="sort-arrow">↓</span></button>
-        <button class="sort-btn" data-key="3d">3日 <span class="sort-arrow"></span></button>
-        <button class="sort-btn" data-key="7d">7日 <span class="sort-arrow"></span></button>
-        <button class="sort-btn" data-key="30d">1月 <span class="sort-arrow"></span></button>
+        <button class="sort-btn" data-key="3d">3日</button>
+        <button class="sort-btn" data-key="7d">7日</button>
+        <button class="sort-btn" data-key="30d">1月</button>
     </div>
     <div class="data-tip" id="dataTip"></div>
     <div class="container" id="container"></div>
@@ -228,7 +246,7 @@
                 <label>接口重试次数</label>
                 <input type="number" id="retryCount" value="1" min="0">
             </div>
-            <div class="form-tip">0=不重试，在这配置</div>
+            <div class="form-tip">0=不重试，数据失败显示 9999999%，代表接口获取失败</div>
             <button class="modal-btn btn-primary" onclick="checkAndFixData()">检测并补充历史数据</button>
             <div style="display: flex; gap: 12px;">
                 <button class="modal-btn btn-primary" style="flex:1" onclick="saveSet()">保存</button>
@@ -272,6 +290,7 @@
         const FUND_RECORDS = "FUND_RECORDS";
         const FIRST_USE = "FUND_FIRST_USE";
         const FIXED_HISTORY_DAYS = 33;
+        const FAIL_VALUE = 9999999; // 数据失败显示的值
 
         let fundTempData = { today: {}, history: [], loading: false };
         let currentTab = "all";
@@ -351,7 +370,7 @@
             return false;
         }
 
-        // 历史数据补充（弹窗提示，取消顶部提示）
+        // 历史数据补充（弹窗提示）
         async function checkAndFixData() {
             closeSet();
             showLoading("检测历史数据...");
@@ -430,6 +449,16 @@
                                     date: item.FSRQ
                                 };
                             }
+                            // 对不足的天数，标记为失败
+                            for (let d = list.length + 1; d <= days; d++) {
+                                if (!cache[d]) cache[d] = {};
+                                cache[d][code] = {
+                                    val: FAIL_VALUE,
+                                    text: FAIL_VALUE + "%",
+                                    cls: "text-gray",
+                                    date: ""
+                                };
+                            }
                             setHistoryCache(cache);
                             resolve(true);
                         } catch (e) {
@@ -450,7 +479,10 @@
         function calcTotalRate(code, n) {
             const c = getHistoryCache();
             let sum = 0;
-            for (let i = 1; i <= n; i++) sum += c[i]?.[code]?.val || 0;
+            for (let i = 1; i <= n; i++) {
+                const val = c[i]?.[code]?.val;
+                sum += (val === undefined || val === FAIL_VALUE) ? 0 : val;
+            }
             return Math.round(sum * 100) / 100;
         }
 
@@ -486,9 +518,13 @@
                 const cfg = getConfig();
                 let done = 0;
                 funds.forEach(code => {
-                    retryRequest(() => requestTodayData(code), cfg.retryCount).then(() => {
-                        if (!fundTempData.today[code]) {
-                            fundTempData.today[code] = { val: 0, text: "0.00%", cls: "text-red", name: "加载失败" };
+                    retryRequest(() => requestTodayData(code), cfg.retryCount).then(success => {
+                        if (success) {
+                            if (!fundTempData.today[code]) {
+                                fundTempData.today[code] = { val: FAIL_VALUE, text: FAIL_VALUE + "%", cls: "text-gray", name: "加载失败" };
+                            }
+                        } else {
+                            fundTempData.today[code] = { val: FAIL_VALUE, text: FAIL_VALUE + "%", cls: "text-gray", name: "加载失败" };
                         }
                         done++;
                         if (done === funds.length) resolve();
@@ -568,12 +604,14 @@
                     b.querySelector(".sort-arrow").innerText = "";
                 });
                 btn.classList.add("active");
-                btn.querySelector(".sort-arrow").innerText = sortOrder === "desc" ? "↓" : "↑";
+                if (currentSort === "today") {
+                    btn.querySelector(".sort-arrow").innerText = sortOrder === "desc" ? "↓" : "↑";
+                }
                 render();
             };
         });
 
-        // 渲染主界面（带买卖记录）
+        // 渲染主界面（带买卖记录和失败值显示）
         function render() {
             const cfg = getConfig();
             const container = document.getElementById("container");
@@ -586,8 +624,14 @@
                 funds = plates[currentTab]?.funds || [];
             }
             let list = funds.map(code => {
-                const td = fundTempData.today[code] || { val: 0, text: "0.00%", cls: "text-red", name: "未知" };
-                const hist = fundTempData.history.map(h => h[code] || { val: 0, text: "0.00%", cls: "text-red", date: "" });
+                const td = fundTempData.today[code] || { val: FAIL_VALUE, text: FAIL_VALUE + "%", cls: "text-gray", name: "未知" };
+                const hist = fundTempData.history.map(h => {
+                    const item = h[code];
+                    if (!item) {
+                        return { val: FAIL_VALUE, text: FAIL_VALUE + "%", cls: "text-gray", date: "" };
+                    }
+                    return item;
+                });
                 return {
                     code, name: td.name, today: td.val,
                     "3d": calcTotalRate(code, 3),
@@ -623,8 +667,8 @@
                     let t = h.text;
                     let cl = h.cls;
                     let tipHtml = "";
-                    if (h.text === "0.00%" && h.val === 0 && !h.date) {
-                        t = "加载失败";
+                    if (h.val === FAIL_VALUE) {
+                        t = FAIL_VALUE + "%";
                         cl = "text-gray";
                         tipHtml = `<span class="tip">数据加载失败</span>`;
                     } else {
@@ -660,14 +704,14 @@
                 const v = parseFloat(el.dataset.val);
                 el.querySelectorAll(".tip:not(.tip-record)").forEach(t => t.remove());
                 el.classList.remove("bg-sell", "bg-buy");
-                if (cfg.sellLine > 0 && v >= cfg.sellLine) {
+                if (v !== FAIL_VALUE && cfg.sellLine > 0 && v >= cfg.sellLine) {
                     const t = document.createElement("span");
                     t.className = "tip tip-sell";
                     t.innerText = `卖出(${cfg.sellLine}%)`;
                     el.appendChild(t);
                     el.classList.add("bg-sell");
                 }
-                if (cfg.buyLine > 0 && v <= -cfg.buyLine) {
+                if (v !== FAIL_VALUE && cfg.buyLine > 0 && v <= -cfg.buyLine) {
                     const t = document.createElement("span");
                     t.className = "tip tip-buy";
                     t.innerText = `买入(${cfg.buyLine}%)`;
