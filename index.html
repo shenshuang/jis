@@ -29,7 +29,6 @@
         color: var(--text);
         padding-bottom: 50px;
     }
-    /* 右侧居中 最近查询时间 */
     .right-center-time {
         position: fixed;
         right: 8px;
@@ -189,7 +188,6 @@
 </head>
 <body>
 
-<!-- 右侧居中：只在这里显示最近查询时间 -->
 <div class="right-center-time" id="rightCenterTime">最近查询: -</div>
 
 <div class="tab-bar" id="tabBar"></div>
@@ -207,7 +205,6 @@
     <button onclick="openMoreSettings()">更多设置</button>
 </div>
 
-<!-- 更多设置弹窗：只保留 修改次数、最近修改时间，已删掉查询时间 -->
 <div class="mask" id="moreSettingsMask">
     <div class="modal">
         <div class="modal-title">更多设置</div>
@@ -219,7 +216,6 @@
             <label>最近修改时间:</label>
             <span id="lastModifyTime">-</span>
         </div>
-
         <button class="modal-btn btn-primary" onclick="openAddData()">添加数据</button>
         <button class="modal-btn btn-primary" onclick="openFundSettings()">基金涨跌幅设置</button>
         <button class="modal-btn btn-primary" onclick="openApiSettings()">接口设置</button>
@@ -385,7 +381,7 @@ function setModifyLog(log) { localStorage.setItem(MODIFY_LOG, JSON.stringify(log
 
 // 初始化
 function initDefaultCache() {
-    if (localStorage.getItem(FIRST_INIT) !== "true") {
+    if (localStorage.getItem(FIRST_INIT)!== "true") {
         setConfig(defaultConfig);
         setApi(defaultApi);
         setFailSettings(defaultFail);
@@ -478,12 +474,10 @@ function updateQueryTime() {
     updateLogDisplay();
 }
 
-// 刷新显示：只在弹窗显示修改次数和修改时间
+// 刷新显示
 function updateLogDisplay() {
     const log = getModifyLog();
-    // 右侧显示查询时间
     document.getElementById("rightCenterTime").innerText = `最近查询: ${log.lastQueryTime || '-'}`;
-    // 弹窗只显示：修改次数 + 修改时间
     document.getElementById("modifyCount").innerText = log.count;
     document.getElementById("lastModifyTime").innerText = log.lastModifyTime || '-';
 }
@@ -505,6 +499,7 @@ async function delay(ms) {
     return new Promise(r => setTimeout(r, ms));
 }
 
+// 带超时的重试
 async function retryWithTimeout(fn, maxRetry) {
     const api = getApi();
     const timeoutMs = api.timeoutGz * 1000;
@@ -521,6 +516,7 @@ async function retryWithTimeout(fn, maxRetry) {
     return false;
 }
 
+// 复制基金代码
 function copyCode(code) {
     navigator.clipboard.writeText(code).then(() => {
         alert("已复制基金代码：" + code);
@@ -529,118 +525,98 @@ function copyCode(code) {
     });
 }
 
-window._gzCallbacks = {};
-window.jsonpgz = res => {
-    if (!res || !res.fundcode) return;
-    const cb = window._gzCallbacks[res.fundcode];
-    if (cb) {
-        const v = Number(res.gszzl || 0);
-        const fail = getFailSettings();
-        fundTempData.today[res.fundcode] = {
-            val: v,
-            text: v.toFixed(2) + "%",
-            cls: v >= 0 ? "text-red" : "text-green",
-            name: res.name || fail.name
-        };
-        cb(true);
-        delete window._gzCallbacks[res.fundcode];
+// 【修复：实时估值接口（东方财富官方）】
+async function requestGz(code) {
+    try {
+        const res = await fetch(`https://fundapi.eastmoney.com/fundgzvalue/get?fundcode=${code}&pageIndex=1&pageSize=1&_=${Date.now()}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data?.Data?.[0] || null;
+    } catch (e) {
+        return null;
     }
-};
-
-function requestGz(code) {
-    return new Promise(resolve => {
-        removeScript("gz_" + code);
-        window._gzCallbacks[code] = resolve;
-        const s = document.createElement("script");
-        s.id = "gz_" + code;
-        s.src = `https://fundgz.1234567.com.cn/js/${code}.js?${Date.now()}`;
-        s.onerror = () => {
-            if (window._gzCallbacks[code]) {
-                window._gzCallbacks[code](false);
-                delete window._gzCallbacks[code];
-            }
-        };
-        document.body.appendChild(s);
-    });
 }
 
+// 【修复：获取今日估值】
 async function getTodayData(funds) {
-    return new Promise(resolve => {
-        fundTempData.today = {};
-        if (funds.length === 0) return resolve();
-        const api = getApi();
-        const fail = getFailSettings();
-        let total = funds.length;
-        let done = 0;
-        const forceEnd = setTimeout(() => {
-            funds.forEach(code => {
-                if (!fundTempData.today[code]) {
-                    fundTempData.today[code] = { val: fail.rate, text: "失败", cls: "text-gray", name: fail.name };
-                }
-            });
-            resolve();
-        }, api.timeoutGz * 1000*2);
-        funds.forEach(code => {
-            retryWithTimeout(() => requestGz(code), api.retryGz).then(ok => {
-                if (!ok || !fundTempData.today[code]) {
-                    fundTempData.today[code] = { val: fail.rate, text: "失败", cls: "text-gray", name: fail.name };
-                }
-                done++;
-                if (done === total) {
-                    clearTimeout(forceEnd);
-                    resolve();
-                }
-            });
+    fundTempData.today = {};
+    if (funds.length === 0) return;
+    
+    const api = getApi();
+    const fail = getFailSettings();
+    const tasks = funds.map(code => {
+        return retryWithTimeout(async () => {
+            const data = await requestGz(code);
+            if (data) {
+                const v = Number(data.Gszzl || 0);
+                fundTempData.today[code] = {
+                    val: v,
+                    text: v.toFixed(2) + "%",
+                    cls: v >= 0? "text-red" : "text-green",
+                    name: data.Name || fail.name
+                };
+                return true;
+            }
+            return false;
+        }, api.retryGz).then(ok => {
+            if (!ok) {
+                fundTempData.today[code] = {
+                    val: fail.rate,
+                    text: "失败",
+                    cls: "text-gray",
+                    name: fail.name
+                };
+            }
         });
     });
+    await Promise.all(tasks);
 }
 
+// 【修复：历史净值接口】
 async function loadOneHistory(code) {
     const cfg = getConfig();
     const days = cfg.showDay;
     const api = getApi();
-    return retryWithTimeout(() => {
-        return new Promise(resolve => {
+    
+    return new Promise(resolve => {
+        const s = document.createElement("script");
+        s.id = "ls_" + code;
+        s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
+        s.onload = () => {
             try {
-                removeScript("ls_" + code);
-                const s = document.createElement("script");
-                s.id = "ls_" + code;
-                s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
-                s.onload = () => {
-                    try {
-                        const fi = window.fundinfo;
-                        if (!fi || !fi.LSJZList) throw new Error();
-                        const list = fi.LSJZList;
-                        const cache = getHistoryCache();
-                        for (let i = 0; i < days && i < list.length; i++) {
-                            const item = list[i];
-                            const v = Number(item.JZZZL || 0);
-                            const dt = item.FSRQ;
-                            const key = dt.replace(/-/g, "");
-                            if (!cache[key]) cache[key] = {};
-                            cache[key][code] = {
-                                val: v,
-                                text: v.toFixed(2) + "%",
-                                cls: v >= 0 ? "text-red" : "text-green",
-                                date: dt
-                            };
-                        }
-                        setHistoryCache(cache);
-                        resolve(true);
-                    } catch (e) {
-                        resolve(false);
-                    } finally {
-                        delete window.fundinfo;
-                        removeScript(s.id);
-                    }
-                };
-                s.onerror = () => resolve(false);
-                document.body.appendChild(s);
+                const fi = window.fundinfo;
+                if (!fi ||!Array.isArray(fi.LSJZList)) throw new Error();
+                
+                const list = fi.LSJZList;
+                const cache = getHistoryCache();
+                for (let i = 0; i < days && i < list.length; i++) {
+                    const item = list[i];
+                    const v = Number(item.JZZZL || 0);
+                    const dt = item.FSRQ;
+                    const key = dt.replace(/-/g, "");
+                    if (!cache[key]) cache[key] = {};
+                    cache[key][code] = {
+                        val: v,
+                        text: v.toFixed(2) + "%",
+                        cls: v >= 0? "text-red" : "text-green",
+                        date: dt
+                    };
+                }
+                setHistoryCache(cache);
+                resolve(true);
             } catch (e) {
                 resolve(false);
+            } finally {
+                delete window.fundinfo;
+                removeScript(s.id);
             }
-        });
-    }, api.retryLs);
+        };
+        s.onerror = () => {
+            removeScript(s.id);
+            resolve(false);
+        };
+        document.body.appendChild(s);
+    });
 }
 
 async function batchLoadHistory(codes) {
@@ -649,7 +625,7 @@ async function batchLoadHistory(codes) {
     for (let i = 0; i < codes.length; i += batch) {
         const group = codes.slice(i, i + batch);
         const res = await Promise.all(group.map(c => loadOneHistory(c)));
-        res.forEach(r => r ? ok++ : fail++);
+        res.forEach(r => r? ok++ : fail++);
         await delay(1500);
     }
     alert(`成功：${ok} 只，失败：${fail} 只`);
@@ -664,6 +640,7 @@ async function checkAndFixHistory() {
     render();
 }
 
+// 计算累计涨幅
 function calcTotal(code, n) {
     const cache = getHistoryCache();
     const fail = getFailSettings();
@@ -671,17 +648,19 @@ function calcTotal(code, n) {
     for (let i = 1; i <= n; i++) {
         const key = getDateKey(i);
         const val = cache[key]?.[code]?.val;
-        if (val != null && val !== fail.rate) sum += val;
+        if (val!= null && val!== fail.rate) sum += val;
     }
     return Math.round(sum * 100)/100;
 }
 
+// 拉取全部数据
 async function fetchAll() {
     if (fundTempData.loading) return;
     fundTempData.loading = true;
     showLoading();
     const cfg = getConfig();
     const all = [...new Set(getPlates().flatMap(p => p.funds).filter(Boolean))];
+    
     try {
         await getTodayData(all);
         fundTempData.history = [];
@@ -691,12 +670,16 @@ async function fetchAll() {
             fundTempData.history.push(cache[getDateKey(i)] || {});
         }
         updateQueryTime();
-    } catch (e) {}
+    } catch (e) {
+        console.error("拉取数据失败：", e);
+    }
+    
     fundTempData.loading = false;
     hideLoading();
     render();
 }
 
+// 渲染页面
 function render() {
     const cfg = getConfig();
     const fail = getFailSettings();
@@ -704,15 +687,18 @@ function render() {
     const today = getTodayDate();
     const container = document.getElementById("container");
     let funds = [];
+    
     if (currentTab === "all") {
         funds = [...new Set(getPlates().flatMap(p => p.funds).filter(Boolean))];
     } else {
         funds = getPlates()[currentTab]?.funds || [];
     }
+    
     if (funds.length === 0) {
         container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--gray-text)">暂无基金</div>`;
         return;
     }
+    
     let list = funds.map(code => {
         const td = fundTempData.today[code] || { val: fail.rate, text: "失败", cls: "text-gray", name: fail.name };
         return {
@@ -727,11 +713,13 @@ function render() {
             historyData: fundTempData.history.map(h => h[code] || { val: fail.rate, text: "无数据", cls: "text-gray", date: "" })
         };
     });
+    
     list.sort((a, b) => {
-        const va = a[currentSort] ?? 0;
-        const vb = b[currentSort] ?? 0;
-        return sortOrder === "desc" ? vb - va : va - vb;
+        const va = a[currentSort]?? 0;
+        const vb = b[currentSort]?? 0;
+        return sortOrder === "desc"? vb - va : va - vb;
     });
+    
     let html = "";
     list.forEach(item => {
         let operateTip = "";
@@ -740,15 +728,17 @@ function render() {
         } else if (item.todayOperate === "sell") {
             operateTip = `<span class="tip tip-record">曾卖出</span>`;
         }
+        
         let tipHtml = "";
         const val = item.today;
-        if (val !== fail.rate) {
+        if (val!== fail.rate) {
             if (val >= cfg.sellLine) {
                 tipHtml = `<span class="tip tip-sell">卖(${cfg.sellLine}%)</span>`;
             } else if (val <= -cfg.buyLine) {
                 tipHtml = `<span class="tip tip-buy">买(${cfg.buyLine}%)</span>`;
             }
         }
+        
         html += `
         <div class="fund-card">
             <div class="fund-info">
@@ -767,6 +757,7 @@ function render() {
                         ${operateTip}
                         ${tipHtml}
                     </div>`;
+        
         item.historyData.forEach((h, i) => {
             let txt = h.text;
             let cls = h.cls;
@@ -780,11 +771,14 @@ function render() {
                         <span class="${cls} data-value">${txt}</span>
                     </div>`;
         });
+        
         html += `</div></div></div>`;
     });
+    
     container.innerHTML = html;
 }
 
+// 买入卖出记录
 function doBuy(code) {
     saveRecord(code, getTodayDate(), "buy");
     alert("已记录买入");
@@ -803,11 +797,12 @@ function refreshData() {
     fetchAll();
 }
 
+// 标签栏
 function renderTabs() {
     const bar = document.getElementById("tabBar");
-    bar.innerHTML = `<div class="tab ${currentTab === 'all' ? 'active' : ''}" onclick="switchTab('all')">全部</div>`;
+    bar.innerHTML = `<div class="tab ${currentTab === 'all'? 'active' : ''}" onclick="switchTab('all')">全部</div>`;
     getPlates().forEach((p, i) => {
-        bar.innerHTML += `<div class="tab ${currentTab === i ? 'active' : ''}" onclick="switchTab(${i})">${p.name}</div>`;
+        bar.innerHTML += `<div class="tab ${currentTab === i? 'active' : ''}" onclick="switchTab(${i})">${p.name}</div>`;
     });
 }
 function switchTab(k) {
@@ -816,11 +811,12 @@ function switchTab(k) {
     render();
 }
 
+// 排序
 document.querySelectorAll(".sort-btn").forEach(btn => {
     btn.onclick = () => {
         const key = btn.dataset.key;
         if (currentSort === key) {
-            sortOrder = sortOrder === "desc" ? "asc" : "desc";
+            sortOrder = sortOrder === "desc"? "asc" : "desc";
         } else {
             currentSort = key;
             sortOrder = "desc";
@@ -830,18 +826,19 @@ document.querySelectorAll(".sort-btn").forEach(btn => {
             b.querySelector(".sort-arrow").innerText = "";
         });
         btn.classList.add("active");
-        btn.querySelector(".sort-arrow").innerText = sortOrder === "desc" ? "↓" : "↑";
+        btn.querySelector(".sort-arrow").innerText = sortOrder === "desc"? "↓" : "↑";
         render();
     };
 });
 
+// 开关绑定
 function bindSwitch() {
     document.querySelectorAll(".switch").forEach(sw => {
         sw.onclick = () => sw.classList.toggle("on");
     });
 }
 
-// 打开更多设置时刷新显示
+// 弹窗操作
 function openMoreSettings() {
     updateLogDisplay();
     document.getElementById("moreSettingsMask").style.display = "flex";
@@ -906,40 +903,45 @@ function saveApiAndFailSettings() {
     fetchAll();
 }
 
+// 接口测试
 async function testGzApi() {
     const code = document.getElementById("testGzCode").value.trim();
     if (!/^\d{6}$/.test(code)) return alert("请输入6位代码");
     showLoading("测试中...");
-    fundTempData.today = {};
-    await retryWithTimeout(() => requestGz(code), 0);
-    const res = fundTempData.today[code];
+    
+    const data = await requestGz(code);
     hideLoading();
-    document.getElementById("testGzResult").value = res ? JSON.stringify(res, null, 2) : "请求失败";
+    document.getElementById("testGzResult").value = data? JSON.stringify(data, null, 2) : "请求失败";
 }
+
 async function testLsApi() {
     const code = document.getElementById("testLsCode").value.trim();
     if (!/^\d{6}$/.test(code)) return alert("请输入6位代码");
     showLoading("测试中...");
+    
     let result = null;
-    await retryWithTimeout(() => {
-        return new Promise(resolve => {
-            removeScript("ls_test");
-            const s = document.createElement("script");
-            s.id = "ls_test";
-            s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
-            s.onload = () => {
-                result = window.fundinfo || null;
-                delete window.fundinfo;
-                resolve(true);
-            };
-            s.onerror = () => resolve(false);
-            document.body.appendChild(s);
-        });
-    }, 0);
+    await new Promise(resolve => {
+        const s = document.createElement("script");
+        s.id = "ls_test";
+        s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
+        s.onload = () => {
+            result = window.fundinfo || null;
+            delete window.fundinfo;
+            removeScript(s.id);
+            resolve();
+        };
+        s.onerror = () => {
+            removeScript(s.id);
+            resolve();
+        };
+        document.body.appendChild(s);
+    });
+    
     hideLoading();
-    document.getElementById("testLsResult").value = result ? JSON.stringify(result, null, 2) : "请求失败";
+    document.getElementById("testLsResult").value = result? JSON.stringify(result, null, 2) : "请求失败";
 }
 
+// 增删板块基金
 function openAddData() {
     renderPlateList();
     document.getElementById("addDataMask").style.display = "flex";
@@ -966,7 +968,7 @@ function renderFundList() {
     const p = getPlates();
     const idx = document.getElementById("selPlate").value;
     const box = document.getElementById("fundList");
-    if (!idx || !p[idx]) {
+    if (!idx ||!p[idx]) {
         box.innerHTML = "<div class='list-item'><span>请选板块</span></div>";
         return;
     }
@@ -1033,7 +1035,7 @@ function batchImport() {
     let current = null;
     lines.forEach(line => {
         if (/^\d{6}$/.test(line)) {
-            if (current && !current.funds.includes(line)) current.funds.push(line);
+            if (current &&!current.funds.includes(line)) current.funds.push(line);
         } else {
             let find = p.find(x => x.name === line);
             if (!find) {
@@ -1051,12 +1053,19 @@ function batchImport() {
     alert("导入完成");
 }
 
+// 页面加载
 window.onload = () => {
-    initDefaultCache();
-    bindSwitch();
-    renderTabs();
-    fetchAll();
-    updateLogDisplay();
+    try {
+        initDefaultCache();
+        bindSwitch();
+        renderTabs();
+        fetchAll();
+        updateLogDisplay();
+    } catch (e) {
+        console.error("页面加载失败：", e);
+        document.getElementById("container").innerHTML = `<div style="text-align:center;padding:40px;color:var(--sell)">页面加载出错，请刷新重试</div>`;
+        hideLoading();
+    }
 };
 </script>
 </body>
