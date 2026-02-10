@@ -1,1 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHP转发测试</title>
+    <style>
+        body { font-family: sans-serif; max-width: 500px; margin: 2rem auto; padding: 0 1rem; }
+        .input-group { margin-bottom: 1rem; }
+        input, button { padding: 0.6rem; font-size: 1rem; }
+        input { width: 200px; }
+        button { background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .result { margin-top: 1rem; padding: 1rem; border: 1px solid #eee; border-radius: 8px; }
+        .up { color: red; }
+        .down { color: green; }
+    </style>
+</head>
+<body>
+    <h2>基金查询（PHP纯转发）</h2>
+    <div class="input-group">
+        <input type="text" id="fundCode" placeholder="输入6位基金代码" value="019244">
+        <button onclick="queryFund()">查询</button>
+    </div>
+    <div id="result" class="result"></div>
 
+    <script>
+        // 配置：PHP转发接口地址
+        const PROXY_URL = 'http://120.27.211.113/proxy.php';
+
+        async function queryFund() {
+            const code = document.getElementById('fundCode').value.trim();
+            const resultEl = document.getElementById('result');
+
+            if (!/^\d{6}$/.test(code)) {
+                resultEl.innerHTML = '<p style="color:red;">请输入有效的6位基金代码</p>';
+                return;
+            }
+
+            try {
+                resultEl.innerHTML = '<p>查询中...</p>';
+
+                // 1. 前端构造目标接口URL
+                const targetUrl = `https://fundgz.1234567.com.cn/js/${code}.js?_=${Date.now()}`;
+                // 2. 调用PHP转发接口
+                const proxyUrl = `${PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
+
+                const response = await fetch(proxyUrl);
+                const data = await response.text();
+
+                // 3. 前端解析JSONP数据
+                const match = data.match(/jsonpgz\((\{.+\})\)/);
+                if (!match) {
+                    resultEl.innerHTML = '<p style="color:red;">解析数据失败</p>';
+                    return;
+                }
+
+                const fundData = JSON.parse(match[1]);
+
+                // 4. 前端渲染结果
+                resultEl.innerHTML = `
+                    <p><strong>基金名称：</strong>${fundData.name}</p>
+                    <p><strong>基金代码：</strong>${code}</p>
+                    <p><strong>估算净值：</strong>${fundData.gsz}</p>
+                    <p><strong>涨跌幅：</strong><span class="${fundData.gszzl >= 0 ? 'up' : 'down'}">${fundData.gszzl}%</span></p>
+                    <p><strong>更新时间：</strong>${fundData.gztime}</p>
+                `;
+            } catch (e) {
+                resultEl.innerHTML = `<p style="color:red;">请求失败：${e.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
