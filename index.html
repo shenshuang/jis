@@ -89,8 +89,7 @@
     .fund-code {
         font-size: 12px; color: var(--sub-text); text-align: center;
         cursor: pointer;
-        padding: 2px 4px;
-        border-radius: 4px;
+        padding: 2px 4px; border-radius: 4px;
         background: #f5f5f5;
     }
     .fund-btns { display: flex; flex-direction: column; gap: 4px; }
@@ -326,21 +325,18 @@
 </div>
 
 <script>
+// 核心常量定义
 const CONFIG = "FUND_CONFIG";
 const PLATES = "FUND_PLATES";
 const HISTORY_CACHE = "HISTORY_CACHE";
 const FUND_RECORDS = "FUND_RECORDS";
 const FAIL_SETTINGS = "FAIL_SETTINGS";
 const API_SETTINGS = "API_SETTINGS";
+const FIRST_INIT = "FUND_FIRST_INIT";
 
+// 默认值常量
 const DEFAULT_FAIL_VALUE = 9876543210;
 const DEFAULT_FAIL_NAME = "获取失败";
-
-let fundTempData = { today: {}, history: [], loading: false };
-let currentTab = "all";
-let currentSort = "today";
-let sortOrder = "desc";
-
 const defaultConfig = {
     showDay: 33,
     sellLine: 2,
@@ -350,26 +346,41 @@ const defaultConfig = {
     investPercent: 2,
     investAmount: 28
 };
-
 const defaultApi = {
     retryGz: 3,
     retryLs: 3
 };
-
 const defaultFail = {
     name: DEFAULT_FAIL_NAME,
     rate: DEFAULT_FAIL_VALUE
 };
 
+// 全局状态
+let fundTempData = { today: {}, history: [], loading: false };
+let currentTab = "all";
+let currentSort = "today";
+let sortOrder = "desc";
+
+// 首次初始化：强制写入所有默认值到缓存
+function initDefaultCache() {
+    if (localStorage.getItem(FIRST_INIT) !== "true") {
+        setConfig(defaultConfig);
+        setApi(defaultApi);
+        setFailSettings(defaultFail);
+        localStorage.setItem(FIRST_INIT, "true");
+    }
+}
+
+// 缓存获取/设置封装
 function getConfig() {
-    try { return { ...defaultConfig, ...JSON.parse(localStorage.getItem(CONFIG)) }; }
-    catch (e) { return { ...defaultConfig }; }
+    try { return JSON.parse(localStorage.getItem(CONFIG)) || defaultConfig; }
+    catch (e) { setConfig(defaultConfig); return defaultConfig; }
 }
 function setConfig(c) { localStorage.setItem(CONFIG, JSON.stringify(c)); }
 
 function getApi() {
-    try { return { ...defaultApi, ...JSON.parse(localStorage.getItem(API_SETTINGS)) }; }
-    catch (e) { return { ...defaultApi }; }
+    try { return JSON.parse(localStorage.getItem(API_SETTINGS)) || defaultApi; }
+    catch (e) { setApi(defaultApi); return defaultApi; }
 }
 function setApi(a) { localStorage.setItem(API_SETTINGS, JSON.stringify(a)); }
 
@@ -386,8 +397,8 @@ function getHistoryCache() {
 function setHistoryCache(c) { localStorage.setItem(HISTORY_CACHE, JSON.stringify(c)); }
 
 function getFailSettings() {
-    try { return { ...defaultFail, ...JSON.parse(localStorage.getItem(FAIL_SETTINGS)) }; }
-    catch (e) { return { ...defaultFail }; }
+    try { return JSON.parse(localStorage.getItem(FAIL_SETTINGS)) || defaultFail; }
+    catch (e) { setFailSettings(defaultFail); return defaultFail; }
 }
 function setFailSettings(f) { localStorage.setItem(FAIL_SETTINGS, JSON.stringify(f)); }
 
@@ -402,6 +413,7 @@ function saveRecord(code, date, type) {
     localStorage.setItem(FUND_RECORDS, JSON.stringify(r));
 }
 
+// 工具函数
 function getDateKey(n) {
     const d = new Date();
     d.setDate(d.getDate() - n);
@@ -409,6 +421,10 @@ function getDateKey(n) {
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const ds = String(d.getDate()).padStart(2, '0');
     return `${y}${m}${ds}`;
+}
+
+function getTodayDate() {
+    return new Date().toISOString().split("T")[0];
 }
 
 function showLoading(text) {
@@ -426,11 +442,17 @@ function removeScript(id) {
 
 async function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function retry(fn, maxRetry) {
+// 带超时的重试函数（解决无限加载）
+async function retryWithTimeout(fn, maxRetry, timeout = 5000) {
     let cnt = 0;
     while (cnt <= maxRetry) {
-        try { if(await fn()) return true; } catch(e){}
-        cnt++; await delay(800);
+        const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(false), timeout));
+        try {
+            const result = await Promise.race([fn(), timeoutPromise]);
+            if (result) return true;
+        } catch (e) {}
+        cnt++;
+        await delay(800);
     }
     return false;
 }
@@ -439,38 +461,38 @@ function copyCode(code) {
     navigator.clipboard.writeText(code).then(()=>alert("已复制基金代码："+code)).catch(()=>alert("复制失败"));
 }
 
-// 修复实时估值接口：等待jsonpgz回调确认数据有效
-window._gzResolve = null;
+// 实时估值接口（修复回调+超时）
+window._gzCallbacks = {};
 window.jsonpgz = res => {
-    window._testGzRes = res;
-    if (!res || !res.fundcode) {
-        if (window._gzResolve) {
-            window._gzResolve(false);
-            window._gzResolve = null;
-        }
-        return;
-    }
-    const v = Number(res.gszzl || 0);
-    const fail = getFailSettings();
-    fundTempData.today[res.fundcode] = {
-        val: v, text: v.toFixed(2)+"%", cls: v>=0?"text-red":"text-green", name: res.name || fail.name
-    };
-    if (window._gzResolve) {
-        window._gzResolve(true);
-        window._gzResolve = null;
+    if (!res || !res.fundcode) return;
+    const callback = window._gzCallbacks[res.fundcode];
+    if (callback) {
+        const v = Number(res.gszzl || 0);
+        const fail = getFailSettings();
+        fundTempData.today[res.fundcode] = {
+            val: v,
+            text: v.toFixed(2)+"%",
+            cls: v>=0?"text-red":"text-green",
+            name: res.name || fail.name
+        };
+        callback(true);
+        delete window._gzCallbacks[res.fundcode];
     }
 };
 
 function requestGz(code) {
     return new Promise(resolve => {
         removeScript("gz_"+code);
-        window._gzResolve = resolve;
+        // 注册回调
+        window._gzCallbacks[code] = resolve;
         const s = document.createElement("script");
         s.id = "gz_"+code;
         s.src = `https://fundgz.1234567.com.cn/js/${code}.js?${Date.now()}`;
         s.onerror = () => {
-            window._gzResolve = null;
-            resolve(false);
+            if (window._gzCallbacks[code]) {
+                window._gzCallbacks[code](false);
+                delete window._gzCallbacks[code];
+            }
         };
         document.body.appendChild(s);
     });
@@ -478,11 +500,18 @@ function requestGz(code) {
 
 async function loadGzOnly(code) {
     window._testGzRes = null;
-    await requestGz(code);
+    await new Promise(resolve => {
+        window._gzCallbacks[code] = (ok) => {
+            window._testGzRes = ok ? window.jsonpgz.lastRes : null;
+            resolve();
+        };
+        requestGz(code);
+    });
     await delay(300);
     return window._testGzRes;
 }
 
+// 历史净值接口
 async function loadLsOnly(code) {
     return new Promise(resolve => {
         removeScript("ls_"+code);
@@ -499,31 +528,52 @@ async function loadLsOnly(code) {
     });
 }
 
+// 今日数据获取（彻底解决加载中）
 async function getTodayData(funds) {
     return new Promise(resolve => {
         fundTempData.today = {};
-        if(!funds.length) return resolve();
+        if (!funds.length) {
+            resolve();
+            return;
+        }
+
         const api = getApi();
         const fail = getFailSettings();
+        let total = funds.length;
         let done = 0;
+
+        // 超时兜底：15秒强制结束
+        const timeoutTimer = setTimeout(() => {
+            funds.forEach(code => {
+                if (!fundTempData.today[code]) {
+                    fundTempData.today[code] = {val:fail.rate, text:"失败", cls:"text-gray", name:fail.name};
+                }
+            });
+            resolve();
+        }, 15000);
+
         funds.forEach(code => {
-            retry(()=>requestGz(code), api.retryGz).then(ok=>{
-                if(!ok || !fundTempData.today[code]){
+            retryWithTimeout(() => requestGz(code), api.retryGz).then(ok => {
+                if (!ok || !fundTempData.today[code]) {
                     fundTempData.today[code] = {val:fail.rate, text:"失败", cls:"text-gray", name:fail.name};
                 }
                 done++;
-                if(done === funds.length) resolve();
+                if (done === total) {
+                    clearTimeout(timeoutTimer);
+                    resolve();
+                }
             });
         });
     });
 }
 
+// 历史净值加载
 async function loadOneHistory(code) {
     const cfg = getConfig();
     const days = cfg.showDay;
     const api = getApi();
-    return retry(()=>{
-        return new Promise(async resolve=>{
+    return retryWithTimeout(()=>{
+        return new Promise(resolve=>{
             try{
                 removeScript("ls_"+code);
                 const s = document.createElement("script");
@@ -577,6 +627,7 @@ async function checkAndFixHistory() {
     render();
 }
 
+// 累计涨幅计算
 function calcTotal(code, n) {
     const cache = getHistoryCache();
     const fail = getFailSettings();
@@ -589,6 +640,7 @@ function calcTotal(code, n) {
     return Math.round(sum*100)/100;
 }
 
+// 核心数据拉取
 async function fetchAll() {
     if(fundTempData.loading) return;
     fundTempData.loading = true;
@@ -601,24 +653,39 @@ async function fetchAll() {
         const cache = getHistoryCache();
         const show = Math.min(cfg.showDay,60);
         for(let i=1;i<=show;i++) fundTempData.history.push(cache[getDateKey(i)]||{});
-    }catch(e){}
+    }catch(e){
+        console.error("数据拉取失败：", e);
+    }
     fundTempData.loading = false;
     hideLoading();
     render();
 }
 
+// 渲染（新增今日操作显示+买卖提示）
 function render() {
     const cfg = getConfig();
     const fail = getFailSettings();
+    const records = getRecords();
+    const today = getTodayDate();
     const container = document.getElementById("container");
     let funds = currentTab==="all"?[...new Set(getPlates().flatMap(p=>p.funds).filter(Boolean))]:(getPlates()[currentTab]?.funds||[]);
+
+    if (funds.length === 0) {
+        container.innerHTML = `<div style="text-align:center;padding:50px 0;color:var(--gray-text);">暂无基金数据，请先添加</div>`;
+        return;
+    }
 
     let list = funds.map(code=>{
         const td = fundTempData.today[code] || {val:fail.rate, text:"失败", cls:"text-gray", name:fail.name};
         return {
-            code, name:td.name, today:td.val,
-            "3d":calcTotal(code,3), "7d":calcTotal(code,7), "30d":calcTotal(code,30),
+            code,
+            name:td.name,
+            today:td.val,
+            "3d":calcTotal(code,3),
+            "7d":calcTotal(code,7),
+            "30d":calcTotal(code,30),
             todayData:td,
+            todayRecord: records[code]?.[today] || "",
             historyData:fundTempData.history.map(h=>h[code]||{val:fail.rate, text:"无数据", cls:"text-gray", date:""})
         };
     });
@@ -630,6 +697,25 @@ function render() {
 
     let html = "";
     list.forEach(item=>{
+        // 今日买卖提示
+        let todayTip = "";
+        if (item.todayRecord === "buy") {
+            todayTip = `<span class="tip tip-record">曾买入</span>`;
+        } else if (item.todayRecord === "sell") {
+            todayTip = `<span class="tip tip-record">曾卖出</span>`;
+        }
+
+        // 阈值提示（使用缓存默认值）
+        let thresholdTip = "";
+        const val = item.today;
+        if (val !== fail.rate) {
+            if (cfg.tipRise && val >= cfg.sellLine) {
+                thresholdTip = `<span class="tip tip-sell">推荐卖出(${cfg.sellLine}%)</span>`;
+            } else if (cfg.tipFall && val <= -cfg.buyLine) {
+                thresholdTip = `<span class="tip tip-buy">推荐买入(${cfg.buyLine}%)</span>`;
+            }
+        }
+
         html+=`
         <div class="fund-card">
             <div class="fund-info">
@@ -645,6 +731,8 @@ function render() {
                     <div class="data-item" data-val="${item.today}">
                         <span class="data-label">今日</span>
                         <span class="${item.todayData.cls} data-value">${item.todayData.text}</span>
+                        ${todayTip}
+                        ${thresholdTip}
                     </div>`;
         item.historyData.forEach((h,i)=>{
             let txt=h.text, cls=h.cls;
@@ -660,15 +748,21 @@ function render() {
     container.innerHTML = html;
 }
 
+// 操作记录
 function doBuy(code){
-    saveRecord(code, new Date().toISOString().split("T")[0], "buy");
-    alert("已记录买入");
+    const today = getTodayDate();
+    saveRecord(code, today, "buy");
+    alert("已记录今日买入");
+    render();
 }
 function doSell(code){
-    saveRecord(code, new Date().toISOString().split("T")[0], "sell");
-    alert("已记录卖出");
+    const today = getTodayDate();
+    saveRecord(code, today, "sell");
+    alert("已记录今日卖出");
+    render();
 }
 
+// 辅助函数
 function scrollToToday(){
     document.querySelectorAll(".data-box").forEach(b=>b.scrollTo({left:0}));
 }
@@ -687,6 +781,7 @@ function renderTabs(){
 }
 function switchTab(k){currentTab=k;renderTabs();render();}
 
+// 排序绑定
 document.querySelectorAll(".sort-btn").forEach(btn=>{
     btn.onclick = ()=>{
         const key=btn.dataset.key;
@@ -703,34 +798,39 @@ function bindSwitch(){
     document.querySelectorAll(".switch").forEach(sw=>{sw.onclick=()=>sw.classList.toggle("on");});
 }
 
+// 弹窗控制
 function openMoreSettings(){document.getElementById("moreSettingsMask").style.display="flex";}
 function closeMoreSettings(){document.getElementById("moreSettingsMask").style.display="none";}
 
+// 基金设置（强制写入默认值）
 function openFundSettings(){
-    const c=getConfig();
-    document.getElementById("showDay").value=c.showDay;
-    document.getElementById("sellLine").value=c.sellLine;
-    document.getElementById("buyLine").value=c.buyLine;
-    document.getElementById("tipRise").classList.toggle("on",c.tipRise);
-    document.getElementById("tipFall").classList.toggle("on",c.tipFall);
-    document.getElementById("investPercent").value=c.investPercent;
-    document.getElementById("investAmount").value=c.investAmount;
+    const c = getConfig();
+    document.getElementById("showDay").value = c.showDay;
+    document.getElementById("sellLine").value = c.sellLine;
+    document.getElementById("buyLine").value = c.buyLine;
+    document.getElementById("tipRise").classList.toggle("on", c.tipRise);
+    document.getElementById("tipFall").classList.toggle("on", c.tipFall);
+    document.getElementById("investPercent").value = c.investPercent;
+    document.getElementById("investAmount").value = c.investAmount;
     document.getElementById("fundSettingsMask").style.display="flex";
 }
 function closeFundSettings(){document.getElementById("fundSettingsMask").style.display="none";}
 function saveFundSettings(){
-    setConfig({
-        showDay:parseInt(document.getElementById("showDay").value)||33,
-        sellLine:parseFloat(document.getElementById("sellLine").value)||2,
-        buyLine:parseFloat(document.getElementById("buyLine").value)||2,
-        tipRise:document.getElementById("tipRise").classList.contains("on"),
-        tipFall:document.getElementById("tipFall").classList.contains("on"),
-        investPercent:parseFloat(document.getElementById("investPercent").value)||2,
-        investAmount:parseInt(document.getElementById("investAmount").value)||28
-    });
-    closeFundSettings();fetchAll();
+    const newConfig = {
+        showDay: parseInt(document.getElementById("showDay").value) || defaultConfig.showDay,
+        sellLine: parseFloat(document.getElementById("sellLine").value) || defaultConfig.sellLine,
+        buyLine: parseFloat(document.getElementById("buyLine").value) || defaultConfig.buyLine,
+        tipRise: document.getElementById("tipRise").classList.contains("on"),
+        tipFall: document.getElementById("tipFall").classList.contains("on"),
+        investPercent: parseFloat(document.getElementById("investPercent").value) || defaultConfig.investPercent,
+        investAmount: parseInt(document.getElementById("investAmount").value) || defaultConfig.investAmount
+    };
+    setConfig(newConfig);
+    closeFundSettings();
+    fetchAll();
 }
 
+// 接口设置
 function openApiSettings(){
     const a=getApi();
     const f=getFailSettings();
@@ -743,33 +843,36 @@ function openApiSettings(){
 function closeApiSettings(){document.getElementById("apiSettingsMask").style.display="none";}
 function saveApiAndFailSettings(){
     setApi({
-        retryGz:parseInt(document.getElementById("retryGz").value)||3,
-        retryLs:parseInt(document.getElementById("retryLs").value)||3
+        retryGz: parseInt(document.getElementById("retryGz").value) || defaultApi.retryGz,
+        retryLs: parseInt(document.getElementById("retryLs").value) || defaultApi.retryLs
     });
     setFailSettings({
-        name:document.getElementById("failName").value.trim()||DEFAULT_FAIL_NAME,
-        rate:parseFloat(document.getElementById("failRate").value)||DEFAULT_FAIL_VALUE
+        name: document.getElementById("failName").value.trim() || DEFAULT_FAIL_NAME,
+        rate: parseFloat(document.getElementById("failRate").value) || DEFAULT_FAIL_VALUE
     });
-    closeApiSettings();fetchAll();
+    closeApiSettings();
+    fetchAll();
 }
 
+// 接口检测
 async function testGzApi(){
     const code=document.getElementById("testGzCode").value.trim();
-    if(!/^\d{6}$/.test(code))return alert("6位代码");
+    if(!/^\d{6}$/.test(code))return alert("请输入6位基金代码");
     showLoading("检测估值接口...");
     const res=await loadGzOnly(code);
     hideLoading();
-    document.getElementById("testGzResult").value=res?JSON.stringify(res,null,2):"请求失败";
+    document.getElementById("testGzResult").value=res?JSON.stringify(res,null,2):"请求失败/无返回";
 }
 async function testLsApi(){
     const code=document.getElementById("testLsCode").value.trim();
-    if(!/^\d{6}$/.test(code))return alert("6位代码");
+    if(!/^\d{6}$/.test(code))return alert("请输入6位基金代码");
     showLoading("检测净值接口...");
     const res=await loadLsOnly(code);
     hideLoading();
-    document.getElementById("testLsResult").value=res?JSON.stringify(res,null,2):"请求失败";
+    document.getElementById("testLsResult").value=res?JSON.stringify(res,null,2):"请求失败/无返回";
 }
 
+// 板块/基金管理
 function openAddData(){renderPlateList();document.getElementById("addDataMask").style.display="flex";}
 function closeAddData(){document.getElementById("addDataMask").style.display="none";}
 function renderPlateList(){
@@ -804,53 +907,78 @@ function addPlate(){
     const name=document.getElementById("newPlate").value.trim();
     if(!name)return alert("请输入板块名");
     const p=getPlates();
-    if(p.some(x=>x.name===name))return alert("已存在");
+    if(p.some(x=>x.name===name))return alert("板块已存在");
     p.push({name,funds:[]});
     setPlates(p);
     document.getElementById("newPlate").value="";
-    renderPlateList();renderTabs();
+    renderPlateList();
+    renderTabs();
 }
 function deletePlate(i){
-    if(!confirm("确定删除？"))return;
-    const p=getPlates();p.splice(i,1);setPlates(p);
-    renderPlateList();renderTabs();fetchAll();
+    if(!confirm("确定删除该板块及下属基金？"))return;
+    const p=getPlates();
+    p.splice(i,1);
+    setPlates(p);
+    renderPlateList();
+    renderTabs();
+    fetchAll();
 }
 function addFund(){
     const idx=document.getElementById("selPlate").value;
     const code=document.getElementById("fundCode").value.trim();
-    if(!idx)return alert("请选板块");
-    if(!/^\d{6}$/.test(code))return alert("6位代码");
+    if(!idx)return alert("请先选择板块");
+    if(!/^\d{6}$/.test(code))return alert("请输入6位基金代码");
     const p=getPlates();
-    if(p[idx].funds.includes(code))return alert("已存在");
-    p[idx].funds.push(code);setPlates(p);
+    if(p[idx].funds.includes(code))return alert("该基金已添加");
+    p[idx].funds.push(code);
+    setPlates(p);
     document.getElementById("fundCode").value="";
-    renderFundList();fetchAll();
+    renderFundList();
+    fetchAll();
 }
 function deleteFund(pIdx,fIdx){
-    if(!confirm("确定删除？"))return;
-    const p=getPlates();p[pIdx].funds.splice(fIdx,1);setPlates(p);
-    renderFundList();fetchAll();
+    if(!confirm("确定删除该基金？"))return;
+    const p=getPlates();
+    p[pIdx].funds.splice(fIdx,1);
+    setPlates(p);
+    renderFundList();
+    fetchAll();
 }
 function batchImport(){
     const text=document.getElementById("batchText").value.trim();
-    if(!text)return alert("请输入内容");
+    if(!text)return alert("请输入导入内容");
     const lines=text.split("\n").map(x=>x.trim()).filter(Boolean);
     const p=getPlates();
-    let current=null;
+    let currentPlate=null;
     lines.forEach(line=>{
         if(/^\d{6}$/.test(line)){
-            if(current&&!current.funds.includes(line))current.funds.push(line);
+            if(currentPlate&&!currentPlate.funds.includes(line)){
+                currentPlate.funds.push(line);
+            }
         }else{
-            let find=p.find(x=>x.name===line);
-            if(!find){find={name:line,funds:[]};p.push(find);}
-            current=find;
+            let plate = p.find(x=>x.name===line);
+            if(!plate){
+                plate = {name:line, funds:[]};
+                p.push(plate);
+            }
+            currentPlate = plate;
         }
     });
     setPlates(p);
-    closeAddData();renderTabs();fetchAll();alert("导入完成");
+    closeAddData();
+    renderTabs();
+    fetchAll();
+    alert("批量导入完成");
 }
 
-window.onload=()=>{bindSwitch();renderTabs();refreshData();};
+// 页面初始化
+window.onload=()=>{
+    initDefaultCache(); // 强制写入默认值
+    bindSwitch();
+    renderTabs();
+    document.getElementById("timeText").innerText = new Date().toLocaleString();
+    fetchAll();
+};
 </script>
 </body>
 </html>
