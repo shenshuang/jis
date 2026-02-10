@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-    <title>基金行情（快速版）</title>
+    <title>基金行情（稳定版）</title>
     <style>
         * {
             margin: 0;
@@ -438,8 +438,8 @@ function removeScript(id) {
     if (s) s.remove();
 }
 
-// ===================== 优化后接口请求逻辑 =====================
-// 1. 今日实时估值（并行请求，减少等待）
+// ===================== 接口请求逻辑 =====================
+// 1. 今日实时估值
 window.jsonpgz = function (res) {
     if (res && res.fundcode) {
         const code = res.fundcode;
@@ -461,7 +461,6 @@ function getRealTodayData(funds) {
         if (total === 0) { resolve(); return; }
 
         let count = 0;
-        // 并行请求所有基金今日数据
         funds.forEach(code => {
             removeScript("gz_" + code);
             const s = document.createElement("script");
@@ -481,11 +480,10 @@ function getRealTodayData(funds) {
     });
 }
 
-// 2. 历史净值（并行请求同天数据，优先用缓存）
+// 2. 历史净值
 function getRealHistoryData(code, dayIdx) {
     return new Promise(resolve => {
         const cache = getHistoryCache();
-        // 缓存存在则直接返回，不重复请求
         if (cache[dayIdx] && cache[dayIdx][code]) {
             resolve();
             return;
@@ -523,19 +521,17 @@ function getRealHistoryData(code, dayIdx) {
     });
 }
 
-// 批量拉取历史数据（按天并行，每天内部并行）
+// 批量拉取历史数据
 async function getAllRealHistory(funds) {
     const cfg = getConfig();
     clearExpireCache();
     const cache = getHistoryCache();
 
-    // 按天数循环，每天的所有基金并行请求
+    // 按新的展示天数拉取数据
     for (let i = 1; i <= cfg.showDay; i++) {
-        // 过滤出该天没有缓存的基金，只请求需要的
         const needRequestFunds = funds.filter(code => !cache[i] || !cache[i][code]);
         if (needRequestFunds.length === 0) continue;
 
-        // 并行请求该天的所有基金数据
         await Promise.all(
             needRequestFunds.map(code => getRealHistoryData(code, i))
         );
@@ -550,16 +546,15 @@ async function fetchAllData() {
 
     const cfg = getConfig();
     const plates = getPlates();
-    const allFunds = [...new Set(plates.flatMap(p => p.funds).filter(code => code))]; // 去重
+    const allFunds = [...new Set(plates.flatMap(p => p.funds).filter(code => code))];
 
     try {
-        // 今日数据和历史数据并行拉取（进一步提速）
         await Promise.all([
             getRealTodayData(allFunds),
             getAllRealHistory(allFunds)
         ]);
 
-        // 组装历史数据
+        // 严格按新的展示天数组装历史数据
         fundTempData.history = [];
         const cache = getHistoryCache();
         for (let i = 1; i <= cfg.showDay; i++) {
@@ -645,6 +640,7 @@ function renderFundCard(item) {
                     <span class="${item.today.cls} data-value">${item.today.text}</span>
                 </div>`;
 
+    // 严格按配置的展示天数渲染历史数据
     item.history.forEach((h, i) => {
         cardHtml += `
         <div class="data-item">
@@ -712,6 +708,7 @@ document.getElementById("orderSort").onclick = () => { localStorage.setItem(SORT
 
 function openSet() {
     const cfg = getConfig();
+    // 打开弹窗时同步显示当前配置（修复之前的显示不一致）
     document.getElementById("showDay").value = cfg.showDay;
     document.getElementById("cacheDay").value = cfg.cacheDay;
     document.getElementById("sellLine").value = cfg.sellLine;
@@ -726,6 +723,7 @@ function openSet() {
 
 function closeSet() { document.getElementById("setMask").style.display = "none"; }
 
+// 修复：保存配置后强制重新拉取对应天数的历史数据
 function saveSet() {
     const newConfig = {
         showDay: parseInt(document.getElementById("showDay").value) || 3,
@@ -740,6 +738,7 @@ function saveSet() {
     };
     setConfig(newConfig);
     closeSet();
+    // 保存后强制重新拉取数据，确保展示天数生效
     fetchAllData();
 }
 
@@ -867,7 +866,7 @@ function batchImport() {
 window.onload = () => {
     bindSwitchButtons();
     document.getElementById("selPlate").onchange = renderSelectFund;
-    fetchAllData(); // 页面加载时拉取数据
+    fetchAllData();
 };
 </script>
 </body>
