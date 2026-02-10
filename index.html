@@ -21,9 +21,6 @@
             --buy-bg: #ecfdf5;
             --sell: #dc2629;
             --sell-bg: #fee2e2;
-            --invest: #8B5CF6;
-            --invest-bg: #f5f3ff;
-            --pink: rgba(255,228,235,0.6);
             --gray-text: #9ca3af;
         }
         body {
@@ -31,6 +28,22 @@
             color: var(--text);
             padding-bottom: 50px;
         }
+
+        /* 刷新时间：右侧中部悬浮垂直居中 */
+        .top-time {
+            position: fixed;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px;
+            color: var(--sub-text);
+            background: rgba(255,255,255,0.85);
+            padding: 4px 6px;
+            border-radius: 4px;
+            z-index: 888;
+            white-space: nowrap;
+        }
+
         .tab-bar {
             display: flex; gap: 8px; padding: 10px 12px;
             background: #fff; border-bottom: 1px solid var(--gray);
@@ -44,15 +57,12 @@
 
         .sort-bar {
             display: flex;
-            gap: 0;
-            padding: 0;
             background: #fff;
             border-bottom: 1px solid var(--gray);
         }
         .sort-btn {
             flex: 1;
             padding: 10px 0;
-            border-radius: 0;
             font-size: 14px;
             background: #fff;
             border: none;
@@ -60,24 +70,19 @@
             cursor: pointer;
             color: var(--sub-text);
         }
-        .sort-btn:last-child {
-            border-right: none;
-        }
+        .sort-btn:last-child { border-right: none; }
         .sort-btn.active {
             background: var(--primary);
             color: #fff;
-            border-right-color: var(--primary);
         }
         .sort-arrow { margin-left: 4px; }
 
-        .data-tip {
-            display: none;
-        }
+        .data-tip { display: none; }
 
         .container { padding: 8px; }
         .fund-card {
             background: #fff; border-radius: 12px; margin-bottom: 8px;
-            display: flex; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            display: flex; overflow: hidden;
         }
         .fund-info {
             width: 90px; padding: 10px; border-right: 1px solid var(--gray);
@@ -105,7 +110,7 @@
             align-items: center; gap: 4px; padding: 6px 0; border-radius: 6px;
         }
         .data-label { font-size: 11px; color: var(--sub-text); }
-        .data-value { font-size: 14px; font-weight: 600; }
+        .data-value { font-size: 14px; font-weight: 60px; }
         .text-red { color: var(--sell); }
         .text-green { color: var(--buy); }
         .text-gray { color: var(--gray-text); }
@@ -125,23 +130,19 @@
             font-size: 14px; color: var(--primary); cursor: pointer;
         }
 
-        /* 弹窗层级：支持多层叠加 */
         .mask {
             position: fixed; inset: 0; background: rgba(0,0,0,0.4);
             display: none; align-items: center; justify-content: center;
         }
-        /* 底层：更多设置 */
         #moreSettingsMask { z-index: 9999; }
-        /* 中层：基金设置、添加数据 */
         #fundSettingsMask, #addDataMask { z-index: 10000; }
-        /* 上层：接口设置、失败默认设置 */
         #apiSettingsMask, #failSettingsMask { z-index: 10001; }
 
         .modal {
             background: #fff; width: 88%; border-radius: 16px; padding: 24px;
             display: flex; flex-direction: column; gap: 16px;
         }
-        .modal-title { text-align: center; font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+        .modal-title { text-align: center; font-size: 16px; font-weight: 600; }
         .form-item {
             display: flex; align-items: center; justify-content: space-between; gap: 12px;
         }
@@ -150,7 +151,6 @@
             flex: 1; border: 1px solid var(--gray); border-radius: 6px;
             padding: 6px 8px; font-size: 14px;
         }
-        .form-item textarea { min-height: 60px; resize: none; }
         .modal-btn {
             border: none; border-radius: 6px; padding: 8px;
             font-size: 14px; cursor: pointer;
@@ -182,7 +182,7 @@
         .loading {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(255,255,255,0.9); padding: 12px 24px; border-radius: 8px;
-            font-size: 14px; color: var(--text); z-index: 99999; display: none;
+            font-size: 14px; z-index: 99999; display: none;
         }
         .form-tip {
             font-size: 11px; color: var(--sub-text);
@@ -195,9 +195,9 @@
     <div class="tab-bar" id="tabBar"></div>
     <div class="sort-bar">
         <button class="sort-btn active" data-key="today">今日 <span class="sort-arrow">↓</span></button>
-        <button class="sort-btn" data-key="3d">3日</button>
-        <button class="sort-btn" data-key="7d">7日</button>
-        <button class="sort-btn" data-key="30d">1月</button>
+        <button class="sort-btn" data-key="3d">3日 <span class="sort-arrow"></span></button>
+        <button class="sort-btn" data-key="7d">7日 <span class="sort-arrow"></span></button>
+        <button class="sort-btn" data-key="30d">1月 <span class="sort-arrow"></span></button>
     </div>
     <div class="data-tip" id="dataTip"></div>
     <div class="container" id="container"></div>
@@ -216,6 +216,7 @@
             <button class="modal-btn btn-primary" onclick="openAddData()">添加数据</button>
             <button class="modal-btn btn-primary" onclick="openApiSettings()">接口设置</button>
             <button class="modal-btn btn-primary" onclick="openFailSettings()">失败默认设置</button>
+            <button class="modal-btn btn-primary" onclick="checkAndFixData()">补充历史数据</button>
             <button class="modal-btn btn-default" onclick="closeMoreSettings()">关闭</button>
         </div>
     </div>
@@ -325,6 +326,7 @@
         const FAIL_SETTINGS = "FAIL_SETTINGS";
         const FIRST_USE = "FUND_FIRST_USE";
         const FIXED_HISTORY_DAYS = 33;
+        const FAIL_VALUE = 9999999;
 
         let fundTempData = { today: {}, history: [], loading: false };
         let currentTab = "all";
@@ -345,8 +347,23 @@
 
         const defaultFailSettings = {
             name: "加载失败",
-            rate: 9999999
+            rate: FAIL_VALUE
         };
+
+        // 日期 key：YYYYMMDD
+        function getDateKey(n) {
+            const d = new Date();
+            d.setDate(d.getDate() - n);
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const dStr = String(d.getDate()).padStart(2, '0');
+            return `${y}${m}${dStr}`;
+        }
+
+        function formatDateKey(key) {
+            if (!key || key.length !== 8) return '';
+            return `${key.slice(0,4)}-${key.slice(4,6)}-${key.slice(6,8)}`;
+        }
 
         function showLoading(text) {
             document.getElementById("loadingTip").innerText = text || "加载中...";
@@ -396,10 +413,7 @@
         async function retryRequest(fn, maxRetry) {
             let cnt = 0;
             while (cnt <= maxRetry) {
-                try {
-                    const r = await fn();
-                    if (r) return r;
-                } catch (e) {}
+                try { const r = await fn(); if (r) return r; } catch (e) {}
                 cnt++;
                 await new Promise(r => setTimeout(r, 800));
             }
@@ -414,8 +428,7 @@
                 val: v,
                 text: v.toFixed(2) + "%",
                 cls: v >= 0 ? "text-red" : "text-green",
-                name: name,
-                time: res.gztime
+                name: name
             };
         };
 
@@ -437,8 +450,19 @@
                 if (funds.length === 0) return resolve();
                 const cfg = getConfig();
                 const fail = getFailSettings();
+                const todayKey = getDateKey(0);
+                const todayDate = formatDateKey(todayKey);
+                const cache = getHistoryCache();
                 let done = 0;
+
                 funds.forEach(code => {
+                    if (cache[todayKey] && cache[todayKey][code]) {
+                        fundTempData.today[code] = cache[todayKey][code];
+                        done++;
+                        if (done === funds.length) resolve();
+                        return;
+                    }
+
                     retryRequest(() => requestTodayData(code), cfg.retryCount).then(success => {
                         if (!success || !fundTempData.today[code]) {
                             fundTempData.today[code] = {
@@ -449,15 +473,13 @@
                             };
                         } else {
                             const now = new Date();
-                            const todayStr = now.toISOString().split("T")[0];
                             if (now.getHours() >= 15) {
-                                const cache = getHistoryCache();
-                                if (!cache[1]) cache[1] = {};
-                                cache[1][code] = {
+                                if (!cache[todayKey]) cache[todayKey] = {};
+                                cache[todayKey][code] = {
                                     val: fundTempData.today[code].val,
                                     text: fundTempData.today[code].text,
                                     cls: fundTempData.today[code].cls,
-                                    date: todayStr
+                                    date: todayDate
                                 };
                                 setHistoryCache(cache);
                             }
@@ -469,11 +491,29 @@
             });
         }
 
-        async function supplementYesterdayData(funds) {
+        async function checkAndFixData() {
+            closeMoreSettings();
+            showLoading("检测历史数据...");
+            const plates = getPlates();
+            const all = [...new Set(plates.flatMap(x => x.funds).filter(Boolean))];
             const cache = getHistoryCache();
-            const need = funds.filter(c => !cache[1] || !cache[1][c]);
-            if (need.length === 0) return;
-            await batchLoadHistory(need, 1);
+            const miss = [];
+            for (const code of all) {
+                let ok = true;
+                for (let d = 1; d <= FIXED_HISTORY_DAYS; d++) {
+                    const dateKey = getDateKey(d);
+                    if (!cache[dateKey] || !cache[dateKey][code]) { ok = false; break; }
+                }
+                if (!ok) miss.push(code);
+            }
+            if (miss.length === 0) {
+                hideLoading();
+                alert("✅ 33天历史数据已完整");
+                return;
+            }
+            await batchLoadHistory(miss, FIXED_HISTORY_DAYS);
+            hideLoading();
+            render();
         }
 
         async function batchLoadHistory(codes, days) {
@@ -489,11 +529,7 @@
                 res.forEach(r => r ? ok++ : fail++);
                 await new Promise(r => setTimeout(r, delay));
             }
-            if (fail === 0) {
-                alert(`✅ 历史数据补充完成\n成功：${ok} 只`);
-            } else {
-                alert(`⚠️ 历史数据补充完毕\n成功：${ok} 只\n失败：${fail} 只`);
-            }
+            alert(fail === 0 ? `✅ 成功：${ok} 只` : `⚠️ 成功：${ok} 只 失败：${fail} 只`);
         }
 
         async function loadOneHistory(code, days) {
@@ -502,9 +538,11 @@
                     const cache = getHistoryCache();
                     let full = true;
                     for (let d = 1; d <= days; d++) {
-                        if (!cache[d] || !cache[d][code]) { full = false; break; }
+                        const dateKey = getDateKey(d);
+                        if (!cache[dateKey] || !cache[dateKey][code]) { full = false; break; }
                     }
                     if (full) return resolve(true);
+
                     removeScript(`ls_${code}`);
                     const s = document.createElement("script");
                     s.id = `ls_${code}`;
@@ -512,18 +550,20 @@
                     s.onload = () => {
                         try {
                             const fi = window.fundinfo;
-                            if (!fi || !fi.LSJZList || fi.LSJZList.length < 1) throw new Error();
+                            if (!fi || !fi.LSJZList) throw new Error();
                             const list = fi.LSJZList;
                             const cache = getHistoryCache();
-                            for (let d = 1; d <= days && d <= list.length; d++) {
-                                const item = list[d - 1];
+                            for (let d = 1; d <= days && d < list.length; d++) {
+                                const item = list[d-1];
                                 const v = Number(item.JZZZL || 0);
-                                if (!cache[d]) cache[d] = {};
-                                cache[d][code] = {
+                                const dateStr = item.FSRQ;
+                                const dateKey = dateStr.replace(/-/g, '');
+                                if (!cache[dateKey]) cache[dateKey] = {};
+                                cache[dateKey][code] = {
                                     val: v,
                                     text: v.toFixed(2) + "%",
                                     cls: v >= 0 ? "text-red" : "text-green",
-                                    date: item.FSRQ
+                                    date: dateStr
                                 };
                             }
                             setHistoryCache(cache);
@@ -547,8 +587,9 @@
             const c = getHistoryCache();
             let sum = 0;
             for (let i = 1; i <= n; i++) {
-                const val = c[i]?.[code]?.val;
-                sum += (val === undefined || val >= 9999999) ? 0 : val;
+                const dateKey = getDateKey(i);
+                const val = c[dateKey]?.[code]?.val;
+                sum += (val === undefined || val >= FAIL_VALUE) ? 0 : val;
             }
             return Math.round(sum * 100) / 100;
         }
@@ -562,17 +603,12 @@
             const all = [...new Set(plates.flatMap(x => x.funds).filter(Boolean))];
             try {
                 await getRealTodayData(all);
-                await supplementYesterdayData(all);
-                if (isFirst) {
-                    await batchLoadHistory(all, 7);
-                    await batchLoadHistory(all, FIXED_HISTORY_DAYS);
-                    markUsed();
-                }
                 fundTempData.history = [];
                 const cache = getHistoryCache();
                 const show = Math.min(cfg.showDay, FIXED_HISTORY_DAYS);
                 for (let i = 1; i <= show; i++) {
-                    fundTempData.history.push(cache[i] || {});
+                    const dateKey = getDateKey(i);
+                    fundTempData.history.push(cache[dateKey] || {});
                 }
             } catch (e) {} finally {
                 fundTempData.loading = false;
@@ -586,7 +622,7 @@
         }
 
         function refreshData() {
-            document.getElementById("timeText").innerText = "最后刷新：" + new Date().toLocaleString();
+            document.getElementById("timeText").innerText = new Date().toLocaleString();
             fetchAllData();
         }
 
@@ -603,22 +639,24 @@
             render();
         }
 
+        // ========== 排序彻底修复 ==========
         document.querySelectorAll(".sort-btn").forEach(btn => {
             btn.onclick = () => {
-                if (currentSort === btn.dataset.key) {
+                const key = btn.dataset.key;
+                if (currentSort === key) {
                     sortOrder = sortOrder === "desc" ? "asc" : "desc";
                 } else {
-                    currentSort = btn.dataset.key;
+                    currentSort = key;
                     sortOrder = "desc";
                 }
+
                 document.querySelectorAll(".sort-btn").forEach(b => {
                     b.classList.remove("active");
                     b.querySelector(".sort-arrow").innerText = "";
                 });
+
                 btn.classList.add("active");
-                if (currentSort === "today") {
-                    btn.querySelector(".sort-arrow").innerText = sortOrder === "desc" ? "↓" : "↑";
-                }
+                btn.querySelector(".sort-arrow").innerText = sortOrder === "desc" ? "↓" : "↑";
                 render();
             };
         });
@@ -635,26 +673,29 @@
             } else {
                 funds = plates[currentTab]?.funds || [];
             }
+
             let list = funds.map(code => {
                 const td = fundTempData.today[code] || { val: fail.rate, text: fail.rate + "%", cls: "text-gray", name: fail.name };
-                const hist = fundTempData.history.map(h => {
-                    const item = h[code];
-                    if (!item) return { val: fail.rate, text: fail.rate + "%", cls: "text-gray", date: "" };
-                    return item;
-                });
                 return {
-                    code, name: td.name, today: td.val,
+                    code, name: td.name,
+                    today: td.val,
                     "3d": calcTotalRate(code, 3),
                     "7d": calcTotalRate(code, 7),
                     "30d": calcTotalRate(code, 30),
-                    todayData: td, historyData: hist
+                    todayData: td,
+                    historyData: fundTempData.history.map(h => h[code] || {
+                        val: fail.rate, text: fail.rate + "%", cls: "text-gray", date: ""
+                    })
                 };
             });
+
+            // 排序逻辑统一修复
             list.sort((a, b) => {
-                const va = a[currentSort] || 0;
-                const vb = b[currentSort] || 0;
+                const va = a[currentSort] ?? 0;
+                const vb = b[currentSort] ?? 0;
                 return sortOrder === "desc" ? vb - va : va - vb;
             });
+
             let html = "";
             list.forEach(item => {
                 html += `
@@ -674,21 +715,19 @@
                                 <span class="${item.todayData.cls} data-value">${item.todayData.text}</span>
                             </div>`;
                 item.historyData.forEach((h, i) => {
-                    let t = h.text;
-                    let cl = h.cls;
                     let tipHtml = "";
                     if (h.val === fail.rate) {
-                        tipHtml = `<span class="tip">数据加载失败</span>`;
+                        tipHtml = `<span class="tip">无数据</span>`;
                     } else {
                         if (h.date) tipHtml += `<span class="tip">${h.date}</span>`;
                         const rec = records[item.code]?.[h.date];
-                        if (rec === "buy") tipHtml += `<span class="tip tip-record">曾买入</span>`;
-                        if (rec === "sell") tipHtml += `<span class="tip tip-record">曾卖出</span>`;
+                        if (rec === "buy") tipHtml += `<span class="tip tip-record">买</span>`;
+                        if (rec === "sell") tipHtml += `<span class="tip tip-record">卖</span>`;
                     }
                     html += `
                             <div class="data-item">
                                 <span class="data-label">T-${i+1}</span>
-                                <span class="${cl} data-value">${t}</span>
+                                <span class="${h.cls} data-value">${h.text}</span>
                                 ${tipHtml}
                             </div>`;
                 });
@@ -709,14 +748,14 @@
                 if (cfg.sellLine > 0 && v >= cfg.sellLine) {
                     const t = document.createElement("span");
                     t.className = "tip tip-sell";
-                    t.innerText = `卖出(${cfg.sellLine}%)`;
+                    t.innerText = `卖(${cfg.sellLine}%)`;
                     el.appendChild(t);
                     el.classList.add("bg-sell");
                 }
                 if (cfg.buyLine > 0 && v <= -cfg.buyLine) {
                     const t = document.createElement("span");
                     t.className = "tip tip-buy";
-                    t.innerText = `买入(${cfg.buyLine}%)`;
+                    t.innerText = `买(${cfg.buyLine}%)`;
                     el.appendChild(t);
                     el.classList.add("bg-buy");
                 }
@@ -726,13 +765,13 @@
         function doBuy(code) {
             const today = new Date().toISOString().split("T")[0];
             saveRecord(code, today, "buy");
-            alert(`已记录【买入】${code}`);
+            alert("已记录买入");
             render();
         }
         function doSell(code) {
             const today = new Date().toISOString().split("T")[0];
             saveRecord(code, today, "sell");
-            alert(`已记录【卖出】${code}`);
+            alert("已记录卖出");
             render();
         }
 
@@ -742,20 +781,17 @@
             });
         }
 
-        // ====================== 弹窗逻辑：支持多层叠加 ======================
-        function openMoreSettings() {
-            document.getElementById("moreSettingsMask").style.display = "flex";
-        }
-        function closeMoreSettings() {
-            document.getElementById("moreSettingsMask").style.display = "none";
-        }
+        function openMoreSettings() { document.getElementById("moreSettingsMask").style.display = "flex"; }
+        function closeMoreSettings() { document.getElementById("moreSettingsMask").style.display = "none"; }
+        function openFundSettings() { document.getElementById("fundSettingsMask").style.display = "flex"; }
+        function closeFundSettings() { document.getElementById("fundSettingsMask").style.display = "none"; }
+        function openAddData() { renderPlateList(); document.getElementById("addDataMask").style.display = "flex"; }
+        function closeAddData() { document.getElementById("addDataMask").style.display = "none"; }
+        function openApiSettings() { document.getElementById("retryCount").value = getConfig().retryCount; document.getElementById("apiSettingsMask").style.display = "flex"; }
+        function closeApiSettings() { document.getElementById("apiSettingsMask").style.display = "none"; }
+        function openFailSettings() { const s = getFailSettings(); document.getElementById("failName").value = s.name; document.getElementById("failRate").value = s.rate; document.getElementById("failSettingsMask").style.display = "flex"; }
+        function closeFailSettings() { document.getElementById("failSettingsMask").style.display = "none"; }
 
-        function openFundSettings() {
-            document.getElementById("fundSettingsMask").style.display = "flex";
-        }
-        function closeFundSettings() {
-            document.getElementById("fundSettingsMask").style.display = "none";
-        }
         function saveFundSettings() {
             const c = {
                 ...getConfig(),
@@ -773,45 +809,20 @@
             fetchAllData();
         }
 
-        function openAddData() {
-            renderPlateList();
-            document.getElementById("addDataMask").style.display = "flex";
-        }
-        function closeAddData() {
-            document.getElementById("addDataMask").style.display = "none";
-        }
-
-        function openApiSettings() {
-            document.getElementById("retryCount").value = getConfig().retryCount;
-            document.getElementById("apiSettingsMask").style.display = "flex";
-        }
-        function closeApiSettings() {
-            document.getElementById("apiSettingsMask").style.display = "none";
-        }
         function saveApiSettings() {
             const c = { ...getConfig(), retryCount: parseInt(document.getElementById("retryCount").value) || 0 };
             setConfig(c);
             closeApiSettings();
         }
 
-        function openFailSettings() {
-            const s = getFailSettings();
-            document.getElementById("failName").value = s.name;
-            document.getElementById("failRate").value = s.rate;
-            document.getElementById("failSettingsMask").style.display = "flex";
-        }
-        function closeFailSettings() {
-            document.getElementById("failSettingsMask").style.display = "none";
-        }
         function saveFailSettings() {
             const s = {
                 name: document.getElementById("failName").value || "加载失败",
-                rate: parseFloat(document.getElementById("failRate").value) || 9999999
+                rate: parseFloat(document.getElementById("failRate").value) || FAIL_VALUE
             };
             setFailSettings(s);
             closeFailSettings();
         }
-        // ==================================================================
 
         function renderPlateList() {
             const p = getPlates();
@@ -913,9 +924,8 @@
 
         window.onload = () => {
             bindSwitch();
-            document.getElementById("selPlate").onchange = renderFundList;
             renderTabs();
-            fetchAllData(isFirstUse());
+            refreshData();
         };
     </script>
 </body>
