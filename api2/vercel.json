@@ -1,11 +1,12 @@
 {
   "functions": {
-    "proxy.php": {
-      "runtime": "vercel-php@0.6.0" // Vercel支持的PHP运行时（含cURL扩展）
+    "api2/proxy.php": { // 对应仓库中的 /api2/proxy.php
+      "runtime": "vercel-php@0.6.0"
     }
   },
   "routes": [
-    { "src": "/", "dest": "/index.html" }, // 默认访问HTML
-    { "src": "/proxy.php", "dest": "/proxy.php" } // 转发接口路由
+    { "src": "/api2/", "dest": "/api2/index.html" }, // 访问 /api2/ 时默认打开HTML
+    { "src": "/api2/proxy.php", "dest": "/api2/proxy.php" }, // 转发接口路由
+    { "src": "/api2/index.html", "dest": "/api2/index.html" } // HTML文件路由
   ]
 }
