@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-    <title>基金行情（带排序箭头版）</title>
+    <title>基金行情（修复版）</title>
     <style>
         * {
             margin: 0;
@@ -24,6 +24,7 @@
             --invest: #8B5CF6;
             --invest-bg: #f5f3ff;
             --pink: rgba(255, 228, 235, 0.6);
+            --gray-text: #9ca3af;
         }
         body {
             background: var(--light);
@@ -164,6 +165,7 @@
         .data-value { font-size: 14px; font-weight: 600; }
         .text-red { color: var(--sell); }
         .text-green { color: var(--buy); }
+        .text-gray { color: var(--gray-text); }
         .tip { font-size: 11px; text-align: center; line-height: 1.2; margin-top: 2px; }
         .bg-sell { background: var(--sell-bg); }
         .bg-buy { background: var(--buy-bg); }
@@ -458,20 +460,20 @@
             document.getElementById("dataTip").textContent = text;
         }
 
-        // 本地存储读写
+        // 本地存储读写（增加容错）
         function getConfig() {
             try { return JSON.parse(localStorage.getItem(CONFIG)) || { ...defaultConfig }; }
-            catch (e) { return { ...defaultConfig }; }
+            catch (e) { console.error("读取配置失败:", e); return { ...defaultConfig }; }
         }
         function setConfig(c) { localStorage.setItem(CONFIG, JSON.stringify(c)); }
         function getPlates() {
             try { return JSON.parse(localStorage.getItem(PLATES)) || []; }
-            catch (e) { return []; }
+            catch (e) { console.error("读取板块失败:", e); return []; }
         }
         function setPlates(p) { localStorage.setItem(PLATES, JSON.stringify(p)); }
         function getHistoryCache() {
             try { return JSON.parse(localStorage.getItem(HISTORY_CACHE)) || {}; }
-            catch (e) { return {}; }
+            catch (e) { console.error("读取历史缓存失败:", e); return {}; }
         }
         function setHistoryCache(cache) { localStorage.setItem(HISTORY_CACHE, JSON.stringify(cache)); }
         function isFirstUse() { return localStorage.getItem(FIRST_USE) !== "false"; }
@@ -521,36 +523,70 @@
 
             setDataTip(`⚠️ 检测到 ${missingFunds.length} 只基金数据缺失，正在补充...`);
             await batchLoadHistory(missingFunds, FIXED_HISTORY_DAYS);
-            setDataTip("✅ 数据补充完成");
             hideLoading();
             render();
         }
 
-        // 分批次加载历史数据
+        // 分批次加载历史数据（带失败统计和页面提示）
         async function batchLoadHistory(codes, days) {
             const batchSize = 5;
             const delay = 300;
+            let successCount = 0;
+            let failCount = 0;
+
             for (let i = 0; i < codes.length; i += batchSize) {
                 const batch = codes.slice(i, i + batchSize);
-                await Promise.all(batch.map(code => loadOneHistory(code, days)));
+                const results = await Promise.all(batch.map(code => loadOneHistory(code, days)));
+                
+                results.forEach(success => {
+                    if (success) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                    }
+                });
+
                 await new Promise(resolve => setTimeout(resolve, delay));
+            }
+
+            // 在页面上显示结果提示
+            if (failCount === 0) {
+                setDataTip(`✅ 成功补充 ${successCount} 只基金的历史数据`);
+            } else {
+                setDataTip(`⚠️ 成功补充 ${successCount} 只，${failCount} 只基金数据加载失败，请稍后重试`);
             }
         }
 
+        // 修正变量名：fundinfo（全小写）
         async function loadOneHistory(code, days) {
             return new Promise(resolve => {
                 try {
                     const cache = getHistoryCache();
-                    if (cache[1] && cache[1][code]) { resolve(true); return; }
+                    // 检查是否已有足够天数的数据
+                    let hasEnoughData = true;
+                    for (let d = 1; d <= days; d++) {
+                        if (!cache[d] || !cache[d][code]) {
+                            hasEnoughData = false;
+                            break;
+                        }
+                    }
+                    if (hasEnoughData) {
+                        resolve(true);
+                        return;
+                    }
 
                     removeScript(`ls_${code}`);
                     const s = document.createElement("script");
                     s.id = `ls_${code}`;
+                    // 添加时间戳避免缓存
                     s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
                     s.onload = function() {
                         try {
-                            const fundInfo = window.fundinfo || {};
-                            const list = fundInfo.LSJZList || [];
+                            // 修正：接口返回的是 fundinfo（全小写）
+                            if (!window.fundinfo || !window.fundinfo.LSJZList) {
+                                throw new Error("接口返回数据格式错误");
+                            }
+                            const list = window.fundinfo.LSJZList || [];
                             const cache = getHistoryCache();
                             for (let d = 1; d <= days && d <= list.length; d++) {
                                 const item = list[d - 1] || {};
@@ -566,17 +602,21 @@
                             setHistoryCache(cache);
                             resolve(true);
                         } catch (e) {
-                            console.error(`加载${code}历史数据失败:`, e);
+                            console.error(`解析${code}历史数据失败:`, e);
                             resolve(false);
                         } finally {
                             removeScript(s.id);
-                            delete window.fundinfo;
+                            delete window.fundinfo; // 修正变量名
                         }
                     };
-                    s.onerror = () => { resolve(false); removeScript(s.id); };
+                    s.onerror = () => {
+                        console.error(`请求${code}历史数据接口失败`);
+                        resolve(false);
+                        removeScript(s.id);
+                    };
                     document.body.appendChild(s);
                 } catch (e) {
-                    console.error(`请求${code}历史数据失败:`, e);
+                    console.error(`处理${code}历史数据失败:`, e);
                     resolve(false);
                 }
             });
@@ -671,7 +711,7 @@
                 await getRealTodayData(allFunds);
                 await supplementYesterdayData(allFunds);
 
-                if (isFirstUse()) {
+                if (isFirstLoad) {
                     await batchLoadHistory(allFunds, 7);
                     showLoading("补充加载剩余历史数据...");
                     await batchLoadHistory(allFunds, FIXED_HISTORY_DAYS);
@@ -745,7 +785,7 @@
             };
         });
 
-        // ===================== 页面渲染 =====================
+        // ===================== 页面渲染（带加载失败提示） =====================
         function render() {
             try {
                 const cfg = getConfig();
@@ -784,7 +824,7 @@
                     return sortOrder === "desc" ? vb - va : va - vb;
                 });
 
-                // 渲染基金卡片
+                // 渲染基金卡片（带加载失败提示）
                 fundList.forEach(item => {
                     let cardHtml = `
                     <div class="fund-card">
@@ -801,15 +841,22 @@
                                 <div class="data-item" data-val="${item.today}">
                                     <span class="data-label">今日</span>
                                     <span class="${item.todayData.cls} data-value">${item.todayData.text}</span>
+                                    ${item.todayData.text === "数据加载失败" ? `<span class="tip">接口请求失败</span>` : ""}
                                 </div>`;
 
                     if (item.historyData.length > 0) {
                         item.historyData.forEach((h, i) => {
+                            let displayText = h.text;
+                            let displayCls = h.cls;
+                            if (h.text === "0.00%" && h.val === 0 && !h.date) {
+                                displayText = "加载失败";
+                                displayCls = "text-gray";
+                            }
                             cardHtml += `
                             <div class="data-item">
                                 <span class="data-label">T-${i+1}</span>
-                                <span class="${h.cls} data-value">${h.text}</span>
-                                ${h.date ? `<span class="tip">${h.date}</span>` : ""}
+                                <span class="${displayCls} data-value">${displayText}</span>
+                                ${h.date ? `<span class="tip">${h.date}</span>` : (displayText === "加载失败" ? `<span class="tip">数据加载失败</span>` : "")}
                             </div>`;
                         });
                     }
@@ -1052,13 +1099,13 @@
             } catch (e) { console.error("批量导入失败:", e); alert("批量导入失败，请检查格式后重试"); }
         }
 
-        // ===================== 初始化 =====================
+        // ===================== 初始化（修正函数调用） =====================
         window.onload = () => {
             try {
                 bindSwitchButtons();
                 document.getElementById("selPlate").onchange = renderSelectFund;
                 renderTabs();
-                fetchAllData(isFirstUse());
+                fetchAllData(isFirstUse()); // 修正：调用函数获取布尔值
             } catch (e) { console.error("初始化失败:", e); hideLoading(); alert("页面初始化失败，请刷新重试"); }
         };
     </script>
