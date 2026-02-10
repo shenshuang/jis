@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>基金实时行情（GitHub Pages）</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui, -apple-system, sans-serif}
+:root{--blue:#3883ff;--up:#dc2629;--down:#059669;--bg:#f8f9fa;--card:#fff;--border:#e9ecef}
+body{background:var(--bg);padding-bottom:55px}
+.top-time{position:fixed;top:8px;right:8px;font-size:12px;background:#ffe6ea;padding:4px 8px;border-radius:8px;z-index:999}
+.header{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--border);height:44px;display:flex;align-items:center;justify-content:center;gap:8px}
+.sbtn{border:1px solid var(--blue);background:none;color:var(--blue);padding:4px 10px;border-radius:6px;font-size:12px}
+.sbtn.active{background:var(--blue);color:#fff}
+.container{padding:8px}
+.plate-title{font-size:14px;font-weight:600;padding:8px 4px}
+.fund-card{background:var(--card);border-radius:12px;margin-bottom:8px;display:flex;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+.fund-info{width:90px;padding:10px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:6px;align-items:center}
+.fund-name{font-size:13px;background:var(--bg);padding:4px;width:100%;text-align:center;border-radius:4px}
+.fund-code{font-size:12px;color:#6b7280}
+.btns{display:flex;flex-direction:column;gap:4px;width:100%}
+.btn-buy{background:#ecfdf5;color:var(--down);border:none;border-radius:4px;padding:4px;font-size:12px}
+.btn-sell{background:#fee2e2;color:var(--up);border:none;border-radius:4px;padding:4px;font-size:12px}
+.data-box{flex:1;overflow-x:auto;scroll-behavior:smooth}
+.data-row{display:inline-flex;align-items:center;height:100%;padding:0 12px;gap:16px}
+.data-item{min-width:65px;display:flex;flex-direction:column;align-items:center;padding:8px 0}
+.data-label{font-size:11px;color:#6b7280}
+.data-value{font-size:14px;font-weight:600}
+.text-up{color:var(--up)}
+.text-down{color:var(--down)}
+.footer{position:fixed;bottom:0;left:0;right:0;height:50px;background:var(--card);border-top:1px solid var(--border);display:flex}
+.footer button{flex:1;border:none;background:none;color:var(--blue);font-size:14px}
+</style>
+</head>
+<body>
+
+<div class="top-time" id="showTime"></div>
+<div class="header">
+  <button class="sbtn" id="btnGlobal">全局</button>
+  <button class="sbtn" id="btnPlate">板块</button>
+  <button class="sbtn" id="btnSort">涨序</button>
+</div>
+
+<div class="container" id="fundList"></div>
+
+<div class="footer">
+  <button onclick="scrollToday()">今日</button>
+  <button onclick="alert('可自行扩展设置')">设置</button>
+  <button onclick="getRealData()">刷新</button>
+  <button onclick="alert('可自行扩展添加')">添加</button>
+</div>
+
+<script>
+// 可修改为你关注的基金代码
+const watchCodes = ["019244", "161725", "000001", "008591"];
+let realData = {};
+
+// 今日按钮：仅横向滚动，不刷新数据
+function scrollToday() {
+  document.querySelectorAll(".data-box").forEach(box => {
+    box.scrollTo({ left: 0, behavior: "smooth" });
+  });
+}
+
+// 刷新按钮：拉取天天基金官方实时估值
+function getRealData() {
+  document.getElementById("showTime").innerText = new Date().toLocaleString();
+  let loaded = 0;
+  realData = {};
+
+  watchCodes.forEach(code => {
+    const script = document.createElement("script");
+    script.src = `https://fundgz.1234567.com.cn/js/${code}.js?callback=realCallback`;
+    
+    window.realCallback = res => {
+      if (res) realData[res.code] = res;
+      loaded++;
+      if (loaded === watchCodes.length) renderPage();
+      document.body.removeChild(script);
+    };
+    document.body.appendChild(script);
+  });
+}
+
+// 渲染真实数据
+function renderPage() {
+  let html = `<div class="plate-title">我的持仓（实时估值）</div>`;
+
+  watchCodes.forEach(code => {
+    const data = realData[code] || { name: "加载中", gszzl: "0" };
+    const rate = parseFloat(data.gszzl || 0);
+    const className = rate >= 0 ? "text-up" : "text-down";
+    const rateText = rate >= 0 ? `+${rate}%` : `${rate}%`;
+
+    html += `
+    <div class="fund-card">
+      <div class="fund-info">
+        <div class="fund-name">${data.name}</div>
+        <div class="fund-code">${code}</div>
+        <div class="btns">
+          <button class="btn-buy">买入</button>
+          <button class="btn-sell">卖出</button>
+        </div>
+      </div>
+      <div class="data-box">
+        <div class="data-row">
+          <div class="data-item">
+            <span class="data-label">实时估值</span>
+            <span class="data-value ${className}">${rateText}</span>
+          </div>
+          <div class="data-item"><span class="data-label">T-1</span><span class="data-value">-</span></div>
+          <div class="data-item"><span class="data-label">T-2</span><span class="data-value">-</span></div>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  document.getElementById("fundList").innerHTML = html;
+}
+
+// 初始化加载
+window.onload = getRealData;
+</script>
+</body>
+</html>
