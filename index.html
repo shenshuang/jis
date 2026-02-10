@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scalecale=1.0,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
 <title>基金行情</title>
 <style>
     * {
@@ -15,13 +15,14 @@
         --primary: #8AB4F8;
         --light: #f5f9ff;
         --gray: #e5e7eb;
-        --text: #111827;
-        --sub-text: #6b7280;
+        --text: #111111;
+        --sub-text: #666;
         --buy: #059669;
         --buy-bg: #ecfdf5;
         --sell: #dc2629;
         --sell-bg: #fee2e2;
-        --gray-text: #9ca3af;
+        --gray-text: #999;
+        --time-bg: #f0f7ff;
     }
     body {
         background: var(--light);
@@ -35,9 +36,9 @@
         transform: translateY(-50%);
         font-size: 12px;
         color: var(--sub-text);
-        background: rgba(255,255,255,0.85);
-        padding: 4px 6px;
-        border-radius: 4px;
+        background: var(--time-bg);
+        padding: 6px 10px;
+        border-radius: 12px;
         z-index: 888;
         white-space: nowrap;
     }
@@ -72,7 +73,6 @@
         color: #fff;
     }
     .sort-arrow { margin-left: 4px; }
-    .data-tip { display: none; }
     .container { padding: 8px; }
     .fund-card {
         background: #fff; border-radius: 12px; margin-bottom: 8px;
@@ -86,7 +86,13 @@
         font-size: 13px; background: var(--light); padding: 4px;
         border-radius: 4px; text-align: center;
     }
-    .fund-code { font-size: 12px; color: var(--sub-text); text-align: center; }
+    .fund-code {
+        font-size: 12px; color: var(--sub-text); text-align: center;
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 4px;
+        background: #f5f5f5;
+    }
     .fund-btns { display: flex; flex-direction: column; gap: 4px; }
     .fund-btns button {
         border: none; border-radius: 4px; font-size: 12px;
@@ -125,25 +131,28 @@
     .mask {
         position: fixed; inset: 0; background: rgba(0,0,0,0.4);
         display: none; align-items: center; justify-content: center;
+        z-index: 9999;
     }
-    #moreSettingsMask { z-index: 9999; }
-    #fundSettingsMask, #addDataMask { z-index: 10000; }
-    #apiSettingsMask, #failSettingsMask { z-index: 10001; }
     .modal {
-        background: #fff; width: 88%; border-radius: 16px; padding: 24px;
-        display: flex; flex-direction: column; gap: 16px;
+        background: #fff; width: 90%; max-width: 380px; border-radius: 16px; padding: 20px;
+        display: flex; flex-direction: column; gap: 14px;
+        max-height: 80vh; overflow-y: auto;
     }
-    .modal-title { text-align: center; font-size: 16px; font-weight: 600; }
+    .modal-title { text-align: center; font-size: 16px; font-weight: 600; margin-bottom: 6px; }
     .form-item {
-        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
     }
-    .form-item label { font-size: 14px; width: 100px; }
+    .form-item label { font-size: 14px; min-width: 120px; }
     .form-item input, .form-item select, .form-item textarea {
         flex: 1; border: 1px solid var(--gray); border-radius: 6px;
         padding: 6px 8px; font-size: 14px;
     }
+    .form-text {
+        width: 100%; height: 120px; resize: none; font-size: 12px;
+        white-space: pre; overflow-wrap: normal; overflow-x: auto;
+    }
     .modal-btn {
-        border: none; border-radius: 6px; padding: 8px;
+        border: none; border-radius: 8px; padding: 8px 12px;
         font-size: 14px; cursor: pointer;
     }
     .btn-primary { background: var(--primary); color: #fff; }
@@ -175,10 +184,6 @@
         background: rgba(255,255,255,0.9); padding: 12px 24px; border-radius: 8px;
         font-size: 14px; z-index: 99999; display: none;
     }
-    .form-tip {
-        font-size: 11px; color: var(--sub-text);
-        margin-top: 4px; text-align: right;
-    }
 </style>
 </head>
 <body>
@@ -190,7 +195,6 @@
     <button class="sort-btn" data-key="7d">7日 <span class="sort-arrow"></span></button>
     <button class="sort-btn" data-key="30d">1月 <span class="sort-arrow"></span></button>
 </div>
-<div class="data-tip" id="dataTip"></div>
 <div class="container" id="container"></div>
 <div class="loading" id="loadingTip">加载中...</div>
 
@@ -203,11 +207,9 @@
 <div class="mask" id="moreSettingsMask">
     <div class="modal">
         <div class="modal-title">更多设置</div>
-        <button class="modal-btn btn-primary" onclick="openFundSettings()">基金涨跌幅设置</button>
         <button class="modal-btn btn-primary" onclick="openAddData()">添加数据</button>
+        <button class="modal-btn btn-primary" onclick="openFundSettings()">基金涨跌幅设置</button>
         <button class="modal-btn btn-primary" onclick="openApiSettings()">接口设置</button>
-        <button class="modal-btn btn-primary" onclick="openFailSettings()">失败默认设置</button>
-        <button class="modal-btn btn-primary" onclick="checkAndFixData()">补充历史数据</button>
         <button class="modal-btn btn-default" onclick="closeMoreSettings()">关闭</button>
     </div>
 </div>
@@ -217,27 +219,23 @@
         <div class="modal-title">基金涨跌幅设置</div>
         <div class="form-item">
             <label>展示历史天数</label>
-            <input type="number" id="showDay" value="3">
+            <input type="number" id="showDay" value="33">
         </div>
         <div class="form-item">
             <label>卖出阈值 %</label>
-            <input type="number" step="0.01" id="sellLine" value="0.1">
+            <input type="number" step="0.01" id="sellLine" value="2">
         </div>
         <div class="form-item">
             <label>买入阈值 %</label>
-            <input type="number" step="0.01" id="buyLine" value="0.1">
+            <input type="number" step="0.01" id="buyLine" value="2">
         </div>
         <div class="form-item">
             <label>多日涨幅提示</label>
-            <div class="switch" id="tipRise"></div>
+            <div class="switch on" id="tipRise"></div>
         </div>
         <div class="form-item">
             <label>多日跌幅提示</label>
-            <div class="switch" id="tipFall"></div>
-        </div>
-        <div class="form-item">
-            <label>定投提醒</label>
-            <div class="switch" id="tipInvest"></div>
+            <div class="switch on" id="tipFall"></div>
         </div>
         <div class="form-item">
             <label>定投阈值 %</label>
@@ -245,7 +243,7 @@
         </div>
         <div class="form-item">
             <label>定投金额</label>
-            <input type="number" id="investAmount" value="999">
+            <input type="number" id="investAmount" value="28">
         </div>
         <button class="modal-btn btn-primary" onclick="saveFundSettings()">保存</button>
         <button class="modal-btn btn-default" onclick="closeFundSettings()">关闭</button>
@@ -268,12 +266,12 @@
         <div class="list-box" id="fundList"></div>
         <div class="form-item">
             <label>基金代码</label>
-            <input type="text" id="fundCode" placeholder="基金代码">
+            <input type="text" id="fundCode" placeholder="6位代码">
         </div>
         <button class="modal-btn btn-primary" onclick="addFund()">添加基金</button>
         <div class="form-item">
             <label>批量导入</label>
-            <textarea id="batchText" placeholder="板块+代码 换行输入"></textarea>
+            <textarea id="batchText" placeholder="板块名+基金代码 换行"></textarea>
         </div>
         <button class="modal-btn btn-primary" onclick="batchImport()">批量导入</button>
         <button class="modal-btn btn-default" onclick="closeAddData()">关闭</button>
@@ -283,29 +281,47 @@
 <div class="mask" id="apiSettingsMask">
     <div class="modal">
         <div class="modal-title">接口设置</div>
+        
         <div class="form-item">
-            <label>接口重试次数</label>
-            <input type="number" id="retryCount" value="1" min="0">
+            <label>实时估值接口重试次数</label>
+            <input type="number" id="retryGz" value="3" min="0">
         </div>
-        <div class="form-tip">0=不重试</div>
-        <button class="modal-btn btn-primary" onclick="saveApiSettings()">保存</button>
-        <button class="modal-btn btn-default" onclick="closeApiSettings()">关闭</button>
-    </div>
-</div>
+        <div class="form-item">
+            <label>历史净值接口重试次数</label>
+            <input type="number" id="retryLs" value="3" min="0">
+        </div>
 
-<div class="mask" id="failSettingsMask">
-    <div class="modal">
-        <div class="modal-title">失败默认设置</div>
+        <div style="height:1px;background:var(--gray);margin:8px 0"></div>
+        
         <div class="form-item">
-            <label>失败基金名</label>
-            <input type="text" id="failName" value="加载失败">
+            <label>接口获取失败默认基金名</label>
+            <input type="text" id="failName" value="狗屁基金">
         </div>
         <div class="form-item">
-            <label>失败涨跌幅</label>
-            <input type="number" id="failRate" value="9999999">
+            <label>失败默认涨跌幅</label>
+            <input type="number" id="failRate" value="9876543210">
         </div>
-        <button class="modal-btn btn-primary" onclick="saveFailSettings()">保存</button>
-        <button class="modal-btn btn-default" onclick="closeFailSettings()">关闭</button>
+
+        <div style="height:1px;background:var(--gray);margin:8px 0"></div>
+
+        <div class="form-item">
+            <label>检测实时估值接口</label>
+            <input type="text" id="testGzCode" placeholder="6位基金代码">
+        </div>
+        <button class="modal-btn btn-primary" onclick="testGzApi()">检测</button>
+        <textarea class="form-text" id="testGzResult" readonly></textarea>
+
+        <div class="form-item">
+            <label>检测历史净值接口</label>
+            <input type="text" id="testLsCode" placeholder="6位基金代码">
+        </div>
+        <button class="modal-btn btn-primary" onclick="testLsApi()">检测</button>
+        <textarea class="form-text" id="testLsResult" readonly></textarea>
+
+        <button class="modal-btn btn-primary" onclick="checkAndFixHistory()">补充历史净值数据</button>
+        
+        <button class="modal-btn btn-primary" onclick="saveApiAndFailSettings()">保存全部</button>
+        <button class="modal-btn btn-default" onclick="closeApiSettings()">关闭</button>
     </div>
 </div>
 
@@ -315,9 +331,10 @@ const PLATES = "FUND_PLATES";
 const HISTORY_CACHE = "HISTORY_CACHE";
 const FUND_RECORDS = "FUND_RECORDS";
 const FAIL_SETTINGS = "FAIL_SETTINGS";
-const FIRST_USE = "FUND_FIRST_USE";
-const FIXED_HISTORY_DAYS = 33;
-const FAIL_VALUE = 9999999;
+const API_SETTINGS = "API_SETTINGS";
+
+const DEFAULT_FAIL_VALUE = 9876543210;
+const DEFAULT_FAIL_NAME = "狗屁基金";
 
 let fundTempData = { today: {}, history: [], loading: false };
 let currentTab = "all";
@@ -325,69 +342,54 @@ let currentSort = "today";
 let sortOrder = "desc";
 
 const defaultConfig = {
-    showDay: 3,
-    sellLine: 0.1,
-    buyLine: 0.1,
-    tipRise: false,
-    tipFall: false,
-    tipInvest: false,
+    showDay: 33,
+    sellLine: 2,
+    buyLine: 2,
+    tipRise: true,
+    tipFall: true,
     investPercent: 2,
-    investAmount: 999,
-    retryCount: 1
+    investAmount: 28
 };
 
-const defaultFailSettings = {
-    name: "加载失败",
-    rate: FAIL_VALUE
+const defaultApi = {
+    retryGz: 3,
+    retryLs: 3
 };
 
-function getDateKey(n) {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dStr = String(d.getDate()).padStart(2, '0');
-    return `${y}${m}${dStr}`;
-}
+const defaultFail = {
+    name: DEFAULT_FAIL_NAME,
+    rate: DEFAULT_FAIL_VALUE
+};
 
-function formatDateKey(key) {
-    if (!key || key.length !== 8) return '';
-    return `${key.slice(0,4)}-${key.slice(4,6)}-${key.slice(6,8)}`;
-}
-
-function showLoading(text) {
-    document.getElementById("loadingTip").innerText = text || "加载中...";
-    document.getElementById("loadingTip").style.display = "block";
-}
-function hideLoading() {
-    document.getElementById("loadingTip").style.display = "none";
-}
 function getConfig() {
-    try { return JSON.parse(localStorage.getItem(CONFIG)) || { ...defaultConfig }; }
+    try { return { ...defaultConfig, ...JSON.parse(localStorage.getItem(CONFIG)) }; }
     catch (e) { return { ...defaultConfig }; }
 }
 function setConfig(c) { localStorage.setItem(CONFIG, JSON.stringify(c)); }
+
+function getApi() {
+    try { return { ...defaultApi, ...JSON.parse(localStorage.getItem(API_SETTINGS)) }; }
+    catch (e) { return { ...defaultApi }; }
+}
+function setApi(a) { localStorage.setItem(API_SETTINGS, JSON.stringify(a)); }
+
 function getPlates() {
     try { return JSON.parse(localStorage.getItem(PLATES)) || []; }
     catch (e) { return []; }
 }
 function setPlates(p) { localStorage.setItem(PLATES, JSON.stringify(p)); }
+
 function getHistoryCache() {
     try { return JSON.parse(localStorage.getItem(HISTORY_CACHE)) || {}; }
     catch (e) { return {}; }
 }
 function setHistoryCache(c) { localStorage.setItem(HISTORY_CACHE, JSON.stringify(c)); }
+
 function getFailSettings() {
-    try { return JSON.parse(localStorage.getItem(FAIL_SETTINGS)) || { ...defaultFailSettings }; }
-    catch (e) { return { ...defaultFailSettings }; }
+    try { return { ...defaultFail, ...JSON.parse(localStorage.getItem(FAIL_SETTINGS)) }; }
+    catch (e) { return { ...defaultFail }; }
 }
-function setFailSettings(s) { localStorage.setItem(FAIL_SETTINGS, JSON.stringify(s)); }
-function isFirstUse() { return localStorage.getItem(FIRST_USE) !== "false"; }
-function markUsed() { localStorage.setItem(FIRST_USE, "false"); }
-function removeScript(id) {
-    const el = document.getElementById(id);
-    if (el) el.remove();
-}
+function setFailSettings(f) { localStorage.setItem(FAIL_SETTINGS, JSON.stringify(f)); }
 
 function getRecords() {
     try { return JSON.parse(localStorage.getItem(FUND_RECORDS)) || {}; }
@@ -400,275 +402,224 @@ function saveRecord(code, date, type) {
     localStorage.setItem(FUND_RECORDS, JSON.stringify(r));
 }
 
-async function retryRequest(fn, maxRetry) {
+function getDateKey(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const ds = String(d.getDate()).padStart(2, '0');
+    return `${y}${m}${ds}`;
+}
+
+function showLoading(text) {
+    document.getElementById("loadingTip").innerText = text || "加载中...";
+    document.getElementById("loadingTip").style.display = "block";
+}
+function hideLoading() {
+    document.getElementById("loadingTip").style.display = "none";
+}
+
+function removeScript(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+}
+
+async function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function retry(fn, maxRetry) {
     let cnt = 0;
     while (cnt <= maxRetry) {
-        try { const r = await fn(); if (r) return r; } catch (e) {}
-        cnt++;
-        await new Promise(r => setTimeout(r, 800));
+        try { if(await fn()) return true; } catch(e){}
+        cnt++; await delay(800);
     }
     return false;
 }
 
+function copyCode(code) {
+    navigator.clipboard.writeText(code).then(()=>alert("已复制基金代码："+code)).catch(()=>alert("复制失败"));
+}
+
 window.jsonpgz = res => {
+    window._testGzRes = res;
     if (!res || !res.fundcode) return;
     const v = Number(res.gszzl || 0);
-    const name = res.name || getFailSettings().name;
+    const fail = getFailSettings();
     fundTempData.today[res.fundcode] = {
-        val: v,
-        text: v.toFixed(2) + "%",
-        cls: v >= 0 ? "text-red" : "text-green",
-        name: name
+        val: v, text: v.toFixed(2)+"%", cls: v>=0?"text-red":"text-green", name: res.name || fail.name
     };
 };
 
-function requestTodayData(code) {
+function requestGz(code) {
     return new Promise(resolve => {
-        removeScript("gz_" + code);
+        removeScript("gz_"+code);
         const s = document.createElement("script");
-        s.id = "gz_" + code;
-        s.src = `https://fundgz.1234567.com.cn/js/${code}.js?rtime=${Date.now()}`;
-        s.onload = () => resolve(!!fundTempData.today[code]);
-        s.onerror = () => resolve(false);
+        s.id = "gz_"+code;
+        s.src = `https://fundgz.1234567.com.cn/js/${code}.js?${Date.now()}`;
+        s.onload = ()=>resolve(true);
+        s.onerror = ()=>resolve(false);
         document.body.appendChild(s);
     });
 }
 
-async function getRealTodayData(funds) {
+async function loadGzOnly(code) {
+    window._testGzRes = null;
+    await requestGz(code);
+    await delay(300);
+    return window._testGzRes;
+}
+
+async function loadLsOnly(code) {
+    return new Promise(resolve => {
+        removeScript("ls_"+code);
+        const s = document.createElement("script");
+        s.id = "ls_"+code;
+        s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
+        s.onload = () => {
+            const res = window.fundinfo || null;
+            resolve(res);
+            delete window.fundinfo;
+        };
+        s.onerror = ()=>resolve(null);
+        document.body.appendChild(s);
+    });
+}
+
+async function getTodayData(funds) {
     return new Promise(resolve => {
         fundTempData.today = {};
-        if (funds.length === 0) return resolve();
-        const cfg = getConfig();
+        if(!funds.length) return resolve();
+        const api = getApi();
         const fail = getFailSettings();
         let done = 0;
-
         funds.forEach(code => {
-            retryRequest(() => requestTodayData(code), cfg.retryCount).then(success => {
-                if (!success || !fundTempData.today[code]) {
-                    fundTempData.today[code] = {
-                        val: fail.rate,
-                        text: fail.rate + "%",
-                        cls: "text-gray",
-                        name: fail.name
-                    };
+            retry(()=>requestGz(code), api.retryGz).then(ok=>{
+                if(!ok || !fundTempData.today[code]){
+                    fundTempData.today[code] = {val:fail.rate, text:fail.rate+"", cls:"text-gray", name:fail.name};
                 }
                 done++;
-                if (done === funds.length) resolve();
+                if(done === funds.length) resolve();
             });
         });
     });
 }
 
-async function checkAndFixData() {
-    closeMoreSettings();
-    showLoading("检测历史数据...");
-    const plates = getPlates();
-    const all = [...new Set(plates.flatMap(x => x.funds).filter(Boolean))];
-    const cache = getHistoryCache();
-    const miss = [];
-    for (const code of all) {
-        let ok = true;
-        for (let d = 1; d <= FIXED_HISTORY_DAYS; d++) {
-            const dateKey = getDateKey(d);
-            if (!cache[dateKey] || !cache[dateKey][code]) { ok = false; break; }
-        }
-        if (!ok) miss.push(code);
+async function loadOneHistory(code) {
+    const cfg = getConfig();
+    const days = cfg.showDay;
+    const api = getApi();
+    return retry(()=>{
+        return new Promise(async resolve=>{
+            try{
+                removeScript("ls_"+code);
+                const s = document.createElement("script");
+                s.id = "ls_"+code;
+                s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
+                s.onload = ()=>{
+                    try{
+                        const fi = window.fundinfo;
+                        if(!fi || !fi.LSJZList) throw new Error();
+                        const list = fi.LSJZList;
+                        const cache = getHistoryCache();
+                        for(let i=0;i<days&&i<list.length;i++){
+                            const item = list[i];
+                            const v = Number(item.JZZZL||0);
+                            const dt = item.FSRQ;
+                            const key = dt.replace(/-/g,"");
+                            if(!cache[key]) cache[key] = {};
+                            cache[key][code] = {val:v, text:v.toFixed(2)+"%", cls:v>=0?"text-red":"text-green", date:dt};
+                        }
+                        setHistoryCache(cache);
+                        resolve(true);
+                    }catch(e){resolve(false);}finally{
+                        delete window.fundinfo; removeScript(s.id);
+                    }
+                };
+                s.onerror = ()=>resolve(false);
+                document.body.appendChild(s);
+            }catch(e){resolve(false);}
+        });
+    }, api.retryLs);
+}
+
+async function batchLoadHistory(codes) {
+    const batch = 3;
+    let ok=0,fail=0;
+    for(let i=0;i<codes.length;i+=batch){
+        const g = codes.slice(i,i+batch);
+        const r = await Promise.all(g.map(c=>loadOneHistory(c)));
+        r.forEach(v=>v?ok++:fail++);
+        await delay(1500);
     }
-    if (miss.length === 0) {
-        hideLoading();
-        alert("✅ 33天历史数据已完整");
-        return;
-    }
-    await batchLoadHistory(miss, FIXED_HISTORY_DAYS);
+    alert(`成功：${ok} 只，失败：${fail} 只`);
+}
+
+async function checkAndFixHistory() {
+    closeApiSettings();
+    showLoading("检查历史净值...");
+    const all = [...new Set(getPlates().flatMap(p=>p.funds).filter(Boolean))];
+    await batchLoadHistory(all);
     hideLoading();
     render();
 }
 
-async function batchLoadHistory(codes, days) {
-    const cfg = getConfig();
-    const batchSize = 3;
-    const delay = 1500;
-    let ok = 0, fail = 0;
-    for (let i = 0; i < codes.length; i += batchSize) {
-        const batch = codes.slice(i, i + batchSize);
-        const res = await Promise.all(
-            batch.map(code => retryRequest(() => loadOneHistory(code, days), cfg.retryCount))
-        );
-        res.forEach(r => r ? ok++ : fail++);
-        await new Promise(r => setTimeout(r, delay));
+function calcTotal(code, n) {
+    const cache = getHistoryCache();
+    const fail = getFailSettings();
+    let sum=0;
+    for(let i=1;i<=n;i++){
+        const key = getDateKey(i);
+        const val = cache[key]?.[code]?.val;
+        if(val!=null && val!==fail.rate) sum+=val;
     }
-    alert(fail === 0 ? `✅ 成功：${ok} 只` : `⚠️ 成功：${ok} 只 失败：${fail} 只`);
+    return Math.round(sum*100)/100;
 }
 
-async function loadOneHistory(code, days) {
-    return new Promise(resolve => {
-        try {
-            const cache = getHistoryCache();
-            let full = true;
-            for (let d = 1; d <= days; d++) {
-                const dateKey = getDateKey(d);
-                if (!cache[dateKey] || !cache[dateKey][code]) { full = false; break; }
-            }
-            if (full) return resolve(true);
-
-            removeScript(`ls_${code}`);
-            const s = document.createElement("script");
-            s.id = `ls_${code}`;
-            s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
-            s.onload = () => {
-                try {
-                    const fi = window.fundinfo;
-                    if (!fi || !fi.LSJZList) throw new Error();
-                    const list = fi.LSJZList;
-                    const cache = getHistoryCache();
-                    for (let d = 1; d <= days && d < list.length; d++) {
-                        const item = list[d-1];
-                        const v = Number(item.JZZZL || 0);
-                        const dateStr = item.FSRQ;
-                        const dateKey = dateStr.replace(/-/g, '');
-                        if (!cache[dateKey]) cache[dateKey] = {};
-                        cache[dateKey][code] = {
-                            val: v,
-                            text: v.toFixed(2) + "%",
-                            cls: v >= 0 ? "text-red" : "text-green",
-                            date: dateStr
-                        };
-                    }
-                    setHistoryCache(cache);
-                    resolve(true);
-                } catch (e) {
-                    resolve(false);
-                } finally {
-                    removeScript(s.id);
-                    delete window.fundinfo;
-                }
-            };
-            s.onerror = () => resolve(false);
-            document.body.appendChild(s);
-        } catch (e) {
-            resolve(false);
-        }
-    });
-}
-
-function calcTotalRate(code, n) {
-    const c = getHistoryCache();
-    let sum = 0;
-    for (let i = 1; i <= n; i++) {
-        const dateKey = getDateKey(i);
-        const val = c[dateKey]?.[code]?.val;
-        if (val !== undefined && val < FAIL_VALUE) {
-            sum += val;
-        }
-    }
-    return Math.round(sum * 100) / 100;
-}
-
-async function fetchAllData(isFirst) {
-    if (fundTempData.loading) return;
+async function fetchAll() {
+    if(fundTempData.loading) return;
     fundTempData.loading = true;
-    showLoading(isFirst ? "首次加载..." : "刷新中...");
+    showLoading();
     const cfg = getConfig();
-    const plates = getPlates();
-    const all = [...new Set(plates.flatMap(x => x.funds).filter(Boolean))];
-    try {
-        await getRealTodayData(all);
+    const all = [...new Set(getPlates().flatMap(p=>p.funds).filter(Boolean))];
+    try{
+        await getTodayData(all);
         fundTempData.history = [];
         const cache = getHistoryCache();
-        const show = Math.min(cfg.showDay, FIXED_HISTORY_DAYS);
-        for (let i = 1; i <= show; i++) {
-            const dateKey = getDateKey(i);
-            fundTempData.history.push(cache[dateKey] || {});
-        }
-    } catch (e) {} finally {
-        fundTempData.loading = false;
-        hideLoading();
-        render();
-    }
-}
-
-function scrollToToday() {
-    document.querySelectorAll(".data-box").forEach(b => b.scrollTo({ left: 0, behavior: "smooth" }));
-}
-
-function refreshData() {
-    document.getElementById("timeText").innerText = new Date().toLocaleString();
-    fetchAllData();
-}
-
-function renderTabs() {
-    const bar = document.getElementById("tabBar");
-    bar.innerHTML = `<div class="tab ${currentTab === 'all' ? 'active' : ''}" onclick="switchTab('all')">全部基金</div>`;
-    getPlates().forEach((p, i) => {
-        bar.innerHTML += `<div class="tab ${currentTab === i ? 'active' : ''}" onclick="switchTab(${i})">${p.name}</div>`;
-    });
-}
-function switchTab(k) {
-    currentTab = k;
-    renderTabs();
+        const show = Math.min(cfg.showDay,60);
+        for(let i=1;i<=show;i++) fundTempData.history.push(cache[getDateKey(i)]||{});
+    }catch(e){}
+    fundTempData.loading = false;
+    hideLoading();
     render();
 }
 
-document.querySelectorAll(".sort-btn").forEach(btn => {
-    btn.onclick = () => {
-        const key = btn.dataset.key;
-        if (currentSort === key) {
-            sortOrder = sortOrder === "desc" ? "asc" : "desc";
-        } else {
-            currentSort = key;
-            sortOrder = "desc";
-        }
-        document.querySelectorAll(".sort-btn").forEach(b => {
-            b.classList.remove("active");
-            b.querySelector(".sort-arrow").innerText = "";
-        });
-        btn.classList.add("active");
-        btn.querySelector(".sort-arrow").innerText = sortOrder === "desc" ? "↓" : "↑";
-        render();
-    };
-});
-
 function render() {
     const cfg = getConfig();
-    const container = document.getElementById("container");
-    const plates = getPlates();
-    const records = getRecords();
     const fail = getFailSettings();
-    let funds = [];
-    if (currentTab === "all") {
-        funds = [...new Set(plates.flatMap(p => p.funds).filter(Boolean))];
-    } else {
-        funds = plates[currentTab]?.funds || [];
-    }
+    const container = document.getElementById("container");
+    let funds = currentTab==="all"?[...new Set(getPlates().flatMap(p=>p.funds).filter(Boolean))]:(getPlates()[currentTab]?.funds||[]);
 
-    let list = funds.map(code => {
-        const td = fundTempData.today[code] || { val: fail.rate, text: fail.rate + "%", cls: "text-gray", name: fail.name };
+    let list = funds.map(code=>{
+        const td = fundTempData.today[code] || {val:fail.rate, text:fail.rate+"", cls:"text-gray", name:fail.name};
         return {
-            code, name: td.name,
-            today: td.val,
-            "3d": calcTotalRate(code, 3),
-            "7d": calcTotalRate(code, 7),
-            "30d": calcTotalRate(code, 30),
-            todayData: td,
-            historyData: fundTempData.history.map(h => h[code] || {
-                val: fail.rate, text: fail.rate + "%", cls: "text-gray", date: ""
-            })
+            code, name:td.name, today:td.val,
+            "3d":calcTotal(code,3), "7d":calcTotal(code,7), "30d":calcTotal(code,30),
+            todayData:td,
+            historyData:fundTempData.history.map(h=>h[code]||{val:fail.rate, text:fail.rate+"", cls:"text-gray", date:""})
         };
     });
 
-    list.sort((a, b) => {
-        const va = a[currentSort] ?? 0;
-        const vb = b[currentSort] ?? 0;
-        return sortOrder === "desc" ? vb - va : va - vb;
+    list.sort((a,b)=>{
+        const va=a[currentSort]??0, vb=b[currentSort]??0;
+        return sortOrder==="desc"?vb-va:va-vb;
     });
 
     let html = "";
-    list.forEach(item => {
-        html += `
+    list.forEach(item=>{
+        html+=`
         <div class="fund-card">
             <div class="fund-info">
-                <div class="fund-name">${item.name || fail.name}</div>
-                <div class="fund-code">${item.code}</div>
+                <div class="fund-name">${item.name}</div>
+                <div class="fund-code" onclick="copyCode('${item.code}')">${item.code}</div>
                 <div class="fund-btns">
                     <button class="btn-buy" onclick="doBuy('${item.code}')">买入</button>
                     <button class="btn-sell" onclick="doSell('${item.code}')">卖出</button>
@@ -680,222 +631,211 @@ function render() {
                         <span class="data-label">今日</span>
                         <span class="${item.todayData.cls} data-value">${item.todayData.text}</span>
                     </div>`;
-        item.historyData.forEach((h, i) => {
-            let tipHtml = "";
-            let displayText = h.text;
-            let displayCls = h.cls;
-            if (h.val === fail.rate) {
-                displayText = "无数据";
-                displayCls = "text-gray";
-            } else {
-                if (h.date) tipHtml += `<span class="tip">${h.date}</span>`;
-                const rec = records[item.code]?.[h.date];
-                if (rec === "buy") tipHtml += `<span class="tip tip-record">买</span>`;
-                if (rec === "sell") tipHtml += `<span class="tip tip-record">卖</span>`;
-            }
-            html += `
+        item.historyData.forEach((h,i)=>{
+            let txt=h.text, cls=h.cls;
+            if(h.val===fail.rate){txt="失败";cls="text-gray";}
+            html+=`
                     <div class="data-item">
                         <span class="data-label">T-${i+1}</span>
-                        <span class="${displayCls} data-value">${displayText}</span>
-                        ${tipHtml}
+                        <span class="${cls} data-value">${txt}</span>
                     </div>`;
         });
-        html += `</div></div></div>`;
+        html+=`</div></div></div>`;
     });
     container.innerHTML = html;
-    renderTips();
 }
 
-function renderTips() {
-    const cfg = getConfig();
-    const fail = getFailSettings();
-    document.querySelectorAll("[data-val]").forEach(el => {
-        const v = parseFloat(el.dataset.val);
-        el.querySelectorAll(".tip:not(.tip-record)").forEach(t => t.remove());
-        el.classList.remove("bg-sell", "bg-buy");
-        if (v === fail.rate) return;
-        if (cfg.sellLine > 0 && v >= cfg.sellLine) {
-            const t = document.createElement("span");
-            t.className = "tip tip-sell";
-            t.innerText = `卖(${cfg.sellLine}%)`;
-            el.appendChild(t);
-            el.classList.add("bg-sell");
-        }
-        if (cfg.buyLine > 0 && v <= -cfg.buyLine) {
-            const t = document.createElement("span");
-            t.className = "tip tip-buy";
-            t.innerText = `买(${cfg.buyLine}%)`;
-            el.appendChild(t);
-            el.classList.add("bg-buy");
-        }
-    });
-}
-
-function doBuy(code) {
-    const today = new Date().toISOString().split("T")[0];
-    saveRecord(code, today, "buy");
+function doBuy(code){
+    saveRecord(code, new Date().toISOString().split("T")[0], "buy");
     alert("已记录买入");
-    render();
 }
-function doSell(code) {
-    const today = new Date().toISOString().split("T")[0];
-    saveRecord(code, today, "sell");
+function doSell(code){
+    saveRecord(code, new Date().toISOString().split("T")[0], "sell");
     alert("已记录卖出");
-    render();
 }
 
-function bindSwitch() {
-    document.querySelectorAll(".switch").forEach(sw => {
-        sw.onclick = () => sw.classList.toggle("on");
+function scrollToToday(){
+    document.querySelectorAll(".data-box").forEach(b=>b.scrollTo({left:0}));
+}
+
+function refreshData(){
+    document.getElementById("timeText").innerText = new Date().toLocaleString();
+    fetchAll();
+}
+
+function renderTabs(){
+    const bar = document.getElementById("tabBar");
+    bar.innerHTML = `<div class="tab ${currentTab==='all'?'active':''}" onclick="switchTab('all')">全部</div>`;
+    getPlates().forEach((p,i)=>{
+        bar.innerHTML+=`<div class="tab ${currentTab===i?'active':''}" onclick="switchTab(${i})">${p.name}</div>`;
     });
 }
+function switchTab(k){currentTab=k;renderTabs();render();}
 
-function openMoreSettings() { document.getElementById("moreSettingsMask").style.display = "flex"; }
-function closeMoreSettings() { document.getElementById("moreSettingsMask").style.display = "none"; }
-function openFundSettings() { document.getElementById("fundSettingsMask").style.display = "flex"; }
-function closeFundSettings() { document.getElementById("fundSettingsMask").style.display = "none"; }
-function openAddData() { renderPlateList(); document.getElementById("addDataMask").style.display = "flex"; }
-function closeAddData() { document.getElementById("addDataMask").style.display = "none"; }
-function openApiSettings() { document.getElementById("retryCount").value = getConfig().retryCount; document.getElementById("apiSettingsMask").style.display = "flex"; }
-function closeApiSettings() { document.getElementById("apiSettingsMask").style.display = "none"; }
-function openFailSettings() { const s = getFailSettings(); document.getElementById("failName").value = s.name; document.getElementById("failRate").value = s.rate; document.getElementById("failSettingsMask").style.display = "flex"; }
-function closeFailSettings() { document.getElementById("failSettingsMask").style.display = "none"; }
-
-function saveFundSettings() {
-    const c = {
-        ...getConfig(),
-        showDay: parseInt(document.getElementById("showDay").value) || 3,
-        sellLine: parseFloat(document.getElementById("sellLine").value) || 0.1,
-        buyLine: parseFloat(document.getElementById("buyLine").value) || 0.1,
-        tipRise: document.getElementById("tipRise").classList.contains("on"),
-        tipFall: document.getElementById("tipFall").classList.contains("on"),
-        tipInvest: document.getElementById("tipInvest").classList.contains("on"),
-        investPercent: parseFloat(document.getElementById("investPercent").value) || 2,
-        investAmount: parseInt(document.getElementById("investAmount").value) || 999
+document.querySelectorAll(".sort-btn").forEach(btn=>{
+    btn.onclick = ()=>{
+        const key=btn.dataset.key;
+        if(currentSort===key) sortOrder=sortOrder==="desc"?"asc":"desc";
+        else{currentSort=key;sortOrder="desc";}
+        document.querySelectorAll(".sort-btn").forEach(b=>{b.classList.remove("active");b.querySelector(".sort-arrow").innerText="";});
+        btn.classList.add("active");
+        btn.querySelector(".sort-arrow").innerText=sortOrder==="desc"?"↓":"↑";
+        render();
     };
-    setConfig(c);
-    closeFundSettings();
-    fetchAllData();
+});
+
+function bindSwitch(){
+    document.querySelectorAll(".switch").forEach(sw=>{sw.onclick=()=>sw.classList.toggle("on");});
 }
 
-function saveApiSettings() {
-    const c = { ...getConfig(), retryCount: parseInt(document.getElementById("retryCount").value) || 0 };
-    setConfig(c);
-    closeApiSettings();
-}
+function openMoreSettings(){document.getElementById("moreSettingsMask").style.display="flex";}
+function closeMoreSettings(){document.getElementById("moreSettingsMask").style.display="none";}
 
-function saveFailSettings() {
-    const s = {
-        name: document.getElementById("failName").value || "加载失败",
-        rate: parseFloat(document.getElementById("failRate").value) || FAIL_VALUE
-    };
-    setFailSettings(s);
-    closeFailSettings();
+function openFundSettings(){
+    const c=getConfig();
+    document.getElementById("showDay").value=c.showDay;
+    document.getElementById("sellLine").value=c.sellLine;
+    document.getElementById("buyLine").value=c.buyLine;
+    document.getElementById("tipRise").classList.toggle("on",c.tipRise);
+    document.getElementById("tipFall").classList.toggle("on",c.tipFall);
+    document.getElementById("investPercent").value=c.investPercent;
+    document.getElementById("investAmount").value=c.investAmount;
+    document.getElementById("fundSettingsMask").style.display="flex";
 }
-
-function renderPlateList() {
-    const p = getPlates();
-    let html = "";
-    p.forEach((item, i) => {
-        html += `<div class="list-item"><span>${item.name}（${item.funds.length}）</span><button class="btn-danger" onclick="deletePlate(${i})">删</button></div>`;
+function closeFundSettings(){document.getElementById("fundSettingsMask").style.display="none";}
+function saveFundSettings(){
+    setConfig({
+        showDay:parseInt(document.getElementById("showDay").value)||33,
+        sellLine:parseFloat(document.getElementById("sellLine").value)||2,
+        buyLine:parseFloat(document.getElementById("buyLine").value)||2,
+        tipRise:document.getElementById("tipRise").classList.contains("on"),
+        tipFall:document.getElementById("tipFall").classList.contains("on"),
+        investPercent:parseFloat(document.getElementById("investPercent").value)||2,
+        investAmount:parseInt(document.getElementById("investAmount").value)||28
     });
-    document.getElementById("plateList").innerHTML = html || "<div class='list-item'><span>暂无板块</span></div>";
+    closeFundSettings();fetchAll();
+}
+
+function openApiSettings(){
+    const a=getApi();
+    const f=getFailSettings();
+    document.getElementById("retryGz").value=a.retryGz;
+    document.getElementById("retryLs").value=a.retryLs;
+    document.getElementById("failName").value=f.name;
+    document.getElementById("failRate").value=f.rate;
+    document.getElementById("apiSettingsMask").style.display="flex";
+}
+function closeApiSettings(){document.getElementById("apiSettingsMask").style.display="none";}
+function saveApiAndFailSettings(){
+    setApi({
+        retryGz:parseInt(document.getElementById("retryGz").value)||3,
+        retryLs:parseInt(document.getElementById("retryLs").value)||3
+    });
+    setFailSettings({
+        name:document.getElementById("failName").value.trim()||DEFAULT_FAIL_NAME,
+        rate:parseFloat(document.getElementById("failRate").value)||DEFAULT_FAIL_VALUE
+    });
+    closeApiSettings();fetchAll();
+}
+
+async function testGzApi(){
+    const code=document.getElementById("testGzCode").value.trim();
+    if(!/^\d{6}$/.test(code))return alert("6位代码");
+    showLoading("检测估值接口...");
+    const res=await loadGzOnly(code);
+    hideLoading();
+    document.getElementById("testGzResult").value=res?JSON.stringify(res,null,2):"请求失败";
+}
+async function testLsApi(){
+    const code=document.getElementById("testLsCode").value.trim();
+    if(!/^\d{6}$/.test(code))return alert("6位代码");
+    showLoading("检测净值接口...");
+    const res=await loadLsOnly(code);
+    hideLoading();
+    document.getElementById("testLsResult").value=res?JSON.stringify(res,null,2):"请求失败";
+}
+
+function openAddData(){renderPlateList();document.getElementById("addDataMask").style.display="flex";}
+function closeAddData(){document.getElementById("addDataMask").style.display="none";}
+function renderPlateList(){
+    const p=getPlates();
+    let html="";
+    p.forEach((item,i)=>{
+        html+=`<div class="list-item"><span>${item.name}（${item.funds.length}）</span><button class="btn-danger" onclick="deletePlate(${i})">删</button></div>`;
+    });
+    document.getElementById("plateList").innerHTML=html||"<div class='list-item'><span>暂无板块</span></div>";
     renderSelectPlate();
 }
-function renderSelectPlate() {
-    const p = getPlates();
-    let html = `<option value="">--选择板块--</option>`;
-    p.forEach((item, i) => html += `<option value="${i}">${item.name}</option>`);
-    document.getElementById("selPlate").innerHTML = html;
+function renderSelectPlate(){
+    const p=getPlates();
+    let html=`<option value="">--选择板块--</option>`;
+    p.forEach((item,i)=>html+=`<option value="${i}">${item.name}</option>`);
+    document.getElementById("selPlate").innerHTML=html;
     renderFundList();
 }
-function renderFundList() {
-    const p = getPlates();
-    const idx = document.getElementById("selPlate").value;
-    const box = document.getElementById("fundList");
-    if (!idx || !p[idx]) {
-        box.innerHTML = "<div class='list-item'><span>请选板块</span></div>";
-        return;
-    }
-    const funds = p[idx].funds;
-    let html = "";
-    funds.forEach((code, i) => {
-        html += `<div class="list-item"><span>${code}</span><button class="btn-danger" onclick="deleteFund(${idx},${i})">删</button></div>`;
+function renderFundList(){
+    const p=getPlates();
+    const idx=document.getElementById("selPlate").value;
+    const box=document.getElementById("fundList");
+    if(!idx||!p[idx]){box.innerHTML="<div class='list-item'><span>请选板块</span></div>";return;}
+    const funds=p[idx].funds;
+    let html="";
+    funds.forEach((code,i)=>{
+        html+=`<div class="list-item"><span>${code}</span><button class="btn-danger" onclick="deleteFund(${idx},${i})">删</button></div>`;
     });
-    box.innerHTML = html || "<div class='list-item'><span>暂无基金</span></div>";
+    box.innerHTML=html||"<div class='list-item'><span>暂无基金</span></div>";
 }
-
-function addPlate() {
-    const name = document.getElementById("newPlate").value.trim();
-    if (!name) return alert("请输入板块名");
-    const p = getPlates();
-    if (p.some(x => x.name === name)) return alert("已存在");
-    p.push({ name, funds: [] });
+function addPlate(){
+    const name=document.getElementById("newPlate").value.trim();
+    if(!name)return alert("请输入板块名");
+    const p=getPlates();
+    if(p.some(x=>x.name===name))return alert("已存在");
+    p.push({name,funds:[]});
     setPlates(p);
-    document.getElementById("newPlate").value = "";
-    renderPlateList();
-    renderTabs();
+    document.getElementById("newPlate").value="";
+    renderPlateList();renderTabs();
 }
-function deletePlate(i) {
-    if (!confirm("确定删除？")) return;
-    const p = getPlates();
-    p.splice(i, 1);
-    setPlates(p);
-    renderPlateList();
-    renderTabs();
-    fetchAllData();
+function deletePlate(i){
+    if(!confirm("确定删除？"))return;
+    const p=getPlates();p.splice(i,1);setPlates(p);
+    renderPlateList();renderTabs();fetchAll();
 }
-function addFund() {
-    const idx = document.getElementById("selPlate").value;
-    const code = document.getElementById("fundCode").value.trim();
-    if (!idx) return alert("请选板块");
-    if (!/^\d{6}$/.test(code)) return alert("6位代码");
-    const p = getPlates();
-    if (p[idx].funds.includes(code)) return alert("已存在");
-    p[idx].funds.push(code);
-    setPlates(p);
-    document.getElementById("fundCode").value = "";
-    renderFundList();
-    fetchAllData();
+function addFund(){
+    const idx=document.getElementById("selPlate").value;
+    const code=document.getElementById("fundCode").value.trim();
+    if(!idx)return alert("请选板块");
+    if(!/^\d{6}$/.test(code))return alert("6位代码");
+    const p=getPlates();
+    if(p[idx].funds.includes(code))return alert("已存在");
+    p[idx].funds.push(code);setPlates(p);
+    document.getElementById("fundCode").value="";
+    renderFundList();fetchAll();
 }
-function deleteFund(pIdx, fIdx) {
-    if (!confirm("确定删除？")) return;
-    const p = getPlates();
-    p[pIdx].funds.splice(fIdx, 1);
-    setPlates(p);
-    renderFundList();
-    fetchAllData();
+function deleteFund(pIdx,fIdx){
+    if(!confirm("确定删除？"))return;
+    const p=getPlates();p[pIdx].funds.splice(fIdx,1);setPlates(p);
+    renderFundList();fetchAll();
 }
-function batchImport() {
-    const text = document.getElementById("batchText").value.trim();
-    if (!text) return alert("请输入内容");
-    const lines = text.split("\n").map(x => x.trim()).filter(Boolean);
-    const p = getPlates();
-    let current = null;
-    lines.forEach(line => {
-        if (/^\d{6}$/.test(line)) {
-            if (current && !current.funds.includes(line)) current.funds.push(line);
-        } else {
-            let find = p.find(x => x.name === line);
-            if (!find) {
-                find = { name: line, funds: [] };
-                p.push(find);
-            }
-            current = find;
+function batchImport(){
+    const text=document.getElementById("batchText").value.trim();
+    if(!text)return alert("请输入内容");
+    const lines=text.split("\n").map(x=>x.trim()).filter(Boolean);
+    const p=getPlates();
+    let current=null;
+    lines.forEach(line=>{
+        if(/^\d{6}$/.test(line)){
+            if(current&&!current.funds.includes(line))current.funds.push(line);
+        }else{
+            let find=p.find(x=>x.name===line);
+            if(!find){find={name:line,funds:[]};p.push(find);}
+            current=find;
         }
     });
     setPlates(p);
-    closeAddData();
-    renderTabs();
-    fetchAllData();
-    alert("导入完成");
+    closeAddData();renderTabs();fetchAll();alert("导入完成");
 }
 
-window.onload = () => {
-    bindSwitch();
-    renderTabs();
-    refreshData();
-};
+window.onload=()=>{bindSwitch();renderTabs();refreshData();};
 </script>
 </body>
 </html>
