@@ -1,785 +1,363 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-    <title>基金行情</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: system-ui, -apple-system, sans-serif;
-        }
-
-        :root {
-            --primary: #8AB4F8;
-            --light: #f5f9ff;
-            --gray: #e5e7eb;
-            --text: #111827;
-            --sub-text: #6b7280;
-            --buy: #059669;
-            --buy-bg: #ecfdf5;
-            --sell: #dc2629;
-            --sell-bg: #fee2e2;
-            --invest: #8B5CF6;
-            --invest-bg: #f5f3ff;
-            --pink: rgba(255, 228, 235, 0.6);
-        }
-
-        body {
-            background: var(--light);
-            color: var(--text);
-            padding-bottom: 50px;
-        }
-
-        .top-time {
-            position: fixed;
-            top: 50%;
-            right: 12px;
-            transform: translateY(-50%);
-            font-size: 12px;
-            color: var(--sub-text);
-            background: var(--pink);
-            padding: 4px 8px;
-            border-radius: 8px;
-            opacity: 0.9;
-            z-index: 1;
-            pointer-events: none;
-            white-space: nowrap;
-        }
-
-        .header {
-            position: sticky;
-            top: 0;
-            background: #fff;
-            border-bottom: 1px solid var(--gray);
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 99;
-        }
-        .sort-group {
-            display: flex;
-            gap: 8px;
-        }
-        .sort-btn {
-            border: 1px solid var(--primary);
-            background: #fff;
-            color: var(--primary);
-            border-radius: 6px;
-            padding: 4px 10px;
-            font-size: 12px;
-            cursor: pointer;
-        }
-        .sort-btn.active {
-            background: var(--primary);
-            color: #fff;
-        }
-
-        .container {
-            padding: 8px;
-        }
-        .plate-title {
-            font-size: 14px;
-            font-weight: 600;
-            padding: 10px 4px;
-        }
-
-        .fund-card {
-            background: #fff;
-            border-radius: 12px;
-            margin-bottom: 8px;
-            display: flex;
-            overflow: hidden;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        }
-        .fund-info {
-            width: 90px;
-            padding: 10px;
-            border-right: 1px solid var(--gray);
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        .fund-name {
-            font-size: 13px;
-            background: var(--light);
-            padding: 4px;
-            border-radius: 4px;
-            text-align: center;
-        }
-        .fund-code {
-            font-size: 12px;
-            color: var(--sub-text);
-            text-align: center;
-        }
-        .fund-btns {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .fund-btns button {
-            border: none;
-            border-radius: 4px;
-            font-size: 12px;
-            padding: 4px;
-            cursor: pointer;
-        }
-        .btn-buy { background: var(--buy-bg); color: var(--buy); }
-        .btn-sell { background: var(--sell-bg); color: var(--sell); }
-
-        .data-box {
-            flex: 1;
-            overflow-x: auto;
-        }
-        .data-row {
-            display: inline-flex;
-            align-items: center;
-            height: 100%;
-            padding: 0 12px;
-            gap: 16px;
-        }
-        .data-item {
-            min-width: 60px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            padding: 6px 0;
-            border-radius: 6px;
-        }
-        .data-label { font-size: 11px; color: var(--sub-text); }
-        .data-value { font-size: 14px; font-weight: 600; }
-        .text-red { color: var(--sell); }
-        .text-green { color: var(--buy); }
-        .tip { font-size: 11px; text-align: center; line-height: 1.2; margin-top: 2px; }
-        .bg-sell { background: var(--sell-bg); }
-        .bg-buy { background: var(--buy-bg); }
-        .bg-invest { background: var(--invest-bg); }
-        .tip-sell { color: var(--sell); }
-        .tip-buy { color: var(--buy); }
-        .tip-invest { color: var(--invest) !important; font-weight: 500; }
-
-        .footer {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 48px;
-            background: #fff;
-            border-top: 1px solid var(--gray);
-            display: flex;
-            align-items: center;
-            z-index: 999;
-        }
-        .footer button {
-            flex: 1;
-            height: 100%;
-            border: none;
-            background: none;
-            font-size: 14px;
-            color: var(--primary);
-            cursor: pointer;
-        }
-
-        .mask {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.4);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
-        }
-        .modal {
-            background: #fff;
-            width: 88%;
-            border-radius: 16px;
-            padding: 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .modal-title {
-            text-align: center;
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        .form-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-        }
-        .form-item label { font-size: 14px; width: 100px; }
-        .form-item input, .form-item select, .form-item textarea {
-            flex: 1;
-            border: 1px solid var(--gray);
-            border-radius: 6px;
-            padding: 6px 8px;
-            font-size: 14px;
-        }
-        .form-item textarea { min-height: 60px; resize: none; }
-        .modal-btn {
-            border: none;
-            border-radius: 6px;
-            padding: 8px;
-            font-size: 14px;
-            cursor: pointer;
-        }
-        .btn-primary { background: var(--primary); color: #fff; }
-        .btn-default { background: var(--gray); color: var(--text); }
-        .btn-danger {
-            background: var(--sell-bg);
-            color: var(--sell);
-            font-size: 12px;
-            padding: 2px 6px;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-        }
-        .list-box {
-            max-height: 100px;
-            overflow-y: auto;
-            border: 1px solid var(--gray);
-            border-radius: 6px;
-            padding: 4px;
-        }
-        .list-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 4px 6px;
-            font-size: 13px;
-        }
-
-        .switch {
-            width: 40px;
-            height: 20px;
-            background: #ccc;
-            border-radius: 10px;
-            position: relative;
-            cursor: pointer;
-        }
-        .switch::after {
-            content: '';
-            position: absolute;
-            width: 16px;
-            height: 16px;
-            background: #fff;
-            border-radius: 50%;
-            top: 2px;
-            left: 2px;
-            transition: 0.2s;
-        }
-        .switch.on { background: var(--primary); }
-        .switch.on::after { left: 22px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>基金实时行情</title>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+:root {
+  --blue: #3883ff;
+  --up: #dc2629;
+  --down: #059669;
+  --bg: #f8f9fa;
+  --card: #fff;
+  --border: #e9ecef;
+}
+body {
+  background: var(--bg);
+  padding-bottom: 60px;
+}
+/* 顶部时间 */
+.top-time {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  font-size: 12px;
+  background: #ffe6ea;
+  padding: 4px 8px;
+  border-radius: 8px;
+  z-index: 999;
+}
+/* 顶部切换栏 */
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--blue);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--blue);
+  font-size: 14px;
+}
+.tab-btn.active {
+  background: var(--blue);
+  color: #fff;
+}
+/* 板块标题 */
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  padding: 12px 16px;
+}
+/* 基金卡片 */
+.fund-card {
+  background: var(--card);
+  border-radius: 12px;
+  margin: 0 12px 12px;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 12px;
+}
+.fund-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fund-name {
+  font-size: 16px;
+  font-weight: 500;
+}
+.fund-code {
+  font-size: 14px;
+  color: #6b7280;
+}
+.fund-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.btn-buy {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #dcfce7;
+  color: var(--down);
+  border: none;
+  font-size: 12px;
+}
+.btn-sell {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #fee2e2;
+  color: var(--up);
+  border: none;
+  font-size: 12px;
+}
+/* 数据行 */
+.fund-data {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  text-align: center;
+  align-items: center;
+}
+.data-item {
+  font-size: 16px;
+  font-weight: 500;
+}
+.data-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+/* 底部操作栏 */
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-around;
+  padding: 12px 0;
+}
+.footer-btn {
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-size: 14px;
+}
+</style>
 </head>
 <body>
+<div class="top-time" id="updateTime">--:--:--</div>
 
-<div class="top-time" id="timeText"></div>
-
-<div class="header">
-    <div class="sort-group">
-        <button class="sort-btn" id="globalSort">全局涨跌</button>
-        <button class="sort-btn" id="plateSort">板块内涨跌</button>
-        <button class="sort-btn" id="orderSort">涨序</button>
-    </div>
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('global')">全局涨跌</button>
+  <button class="tab-btn" onclick="switchTab('sector')">板块内涨跌</button>
+  <button class="tab-btn" onclick="switchTab('sort')">跌序</button>
 </div>
 
-<div class="container" id="container"></div>
+<div id="fundList">
+  <!-- 光伏板块 -->
+  <div class="section-title">光伏</div>
+  <div class="fund-card" data-code="019244">
+    <div class="fund-info">
+      <div class="fund-name">未知基金</div>
+      <div class="fund-code">019244</div>
+      <div class="fund-actions">
+        <button class="btn-buy">买入</button>
+        <button class="btn-sell">卖出</button>
+      </div>
+    </div>
+    <div class="fund-data">
+      <div>
+        <div class="data-label">今日</div>
+        <div class="data-item today">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-1</div>
+        <div class="data-item t1">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-2</div>
+        <div class="data-item t2">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-3</div>
+        <div class="data-item t3">0%</div>
+      </div>
+    </div>
+  </div>
 
-<!-- 底部按钮：今日=仅滚动；刷新=才请求数据 -->
+  <div class="fund-card" data-code="016981">
+    <div class="fund-info">
+      <div class="fund-name">未知基金</div>
+      <div class="fund-code">016981</div>
+      <div class="fund-actions">
+        <button class="btn-buy">买入</button>
+        <button class="btn-sell">卖出</button>
+      </div>
+    </div>
+    <div class="fund-data">
+      <div>
+        <div class="data-label">今日</div>
+        <div class="data-item today">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-1</div>
+        <div class="data-item t1">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-2</div>
+        <div class="data-item t2">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-3</div>
+        <div class="data-item t3">0%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fund-card" data-code="016335">
+    <div class="fund-info">
+      <div class="fund-name">未知基金</div>
+      <div class="fund-code">016335</div>
+      <div class="fund-actions">
+        <button class="btn-buy">买入</button>
+        <button class="btn-sell">卖出</button>
+      </div>
+    </div>
+    <div class="fund-data">
+      <div>
+        <div class="data-label">今日</div>
+        <div class="data-item today">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-1</div>
+        <div class="data-item t1">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-2</div>
+        <div class="data-item t2">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-3</div>
+        <div class="data-item t3">0%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 军工航天机器人板块 -->
+  <div class="section-title">军工航天机器人</div>
+  <div class="fund-card" data-code="018363">
+    <div class="fund-info">
+      <div class="fund-name">未知基金</div>
+      <div class="fund-code">018363</div>
+      <div class="fund-actions">
+        <button class="btn-buy">买入</button>
+        <button class="btn-sell">卖出</button>
+      </div>
+    </div>
+    <div class="fund-data">
+      <div>
+        <div class="data-label">今日</div>
+        <div class="data-item today">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-1</div>
+        <div class="data-item t1">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-2</div>
+        <div class="data-item t2">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-3</div>
+        <div class="data-item t3">0%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fund-card" data-code="015839">
+    <div class="fund-info">
+      <div class="fund-name">未知基金</div>
+      <div class="fund-code">015839</div>
+      <div class="fund-actions">
+        <button class="btn-buy">买入</button>
+        <button class="btn-sell">卖出</button>
+      </div>
+    </div>
+    <div class="fund-data">
+      <div>
+        <div class="data-label">今日</div>
+        <div class="data-item today">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-1</div>
+        <div class="data-item t1">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-2</div>
+        <div class="data-item t2">0%</div>
+      </div>
+      <div>
+        <div class="data-label">T-3</div>
+        <div class="data-item t3">0%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="footer">
-    <button onclick="scrollToToday()">今日</button>
-    <button onclick="openSet()">更多操作</button>
-    <button onclick="refreshData()">刷新</button>
-    <button onclick="openAdd()">添加数据</button>
-</div>
-
-<div class="mask" id="setMask">
-    <div class="modal">
-        <div class="modal-title">更多操作</div>
-        <div class="form-item">
-            <label>展示历史天数</label>
-            <input type="number" id="showDay" value="3" min="1">
-        </div>
-        <div class="form-item">
-            <label>缓存历史数据天数</label>
-            <input type="number" id="cacheDay" value="15" min="1">
-        </div>
-        <div class="form-item">
-            <label>卖出阈值 %</label>
-            <input type="number" step="0.01" id="sellLine" value="0.1">
-        </div>
-        <div class="form-item">
-            <label>买入阈值 %</label>
-            <input type="number" step="0.01" id="buyLine" value="0.1">
-        </div>
-        <div class="form-item">
-            <label>多日涨幅提示</label>
-            <div class="switch" id="tipRise"></div>
-        </div>
-        <div class="form-item">
-            <label>多日跌幅提示</label>
-            <div class="switch" id="tipFall"></div>
-        </div>
-        <div class="form-item">
-            <label>定投提醒</label>
-            <div class="switch" id="tipInvest"></div>
-        </div>
-        <div class="form-item">
-            <label>定投阈值 %</label>
-            <input type="number" step="0.01" id="investPercent" value="2">
-        </div>
-        <div class="form-item">
-            <label>定投金额</label>
-            <input type="number" id="investAmount" value="999">
-        </div>
-        <button class="modal-btn btn-primary" onclick="saveSet()">保存</button>
-        <button class="modal-btn btn-default" onclick="closeSet()">关闭</button>
-    </div>
-</div>
-
-<div class="mask" id="addMask">
-    <div class="modal">
-        <div class="modal-title">数据管理</div>
-        <div class="form-item">
-            <label>输入板块名</label>
-            <input type="text" id="newPlate" placeholder="板块名称">
-        </div>
-        <button class="modal-btn btn-primary" onclick="addPlate()">创建板块</button>
-
-        <div class="list-box" id="plateList"></div>
-
-        <div class="form-item">
-            <label>选择板块</label>
-            <select id="selPlate"></select>
-        </div>
-
-        <div class="list-box" id="fundList"></div>
-
-        <div class="form-item">
-            <label>基金代码</label>
-            <input type="text" id="fundCode" placeholder="基金代码">
-        </div>
-        <button class="modal-btn btn-primary" onclick="addFund()">添加基金</button>
-
-        <div class="form-item">
-            <label>批量导入</label>
-            <textarea id="batchText" placeholder="板块+代码 换行输入"></textarea>
-        </div>
-        <button class="modal-btn btn-primary" onclick="batchImport()">批量导入</button>
-        <button class="modal-btn btn-default" onclick="closeAdd()">关闭</button>
-    </div>
+  <button class="footer-btn" onclick="scrollToToday()">今日</button>
+  <button class="footer-btn" onclick="showMoreOps()">更多操作</button>
+  <button class="footer-btn" onclick="refreshData()">刷新</button>
+  <button class="footer-btn" onclick="addFund()">添加数据</button>
 </div>
 
 <script>
-// 存储KEY
-const CONFIG = "FUND_CONFIG";
-const PLATES = "FUND_PLATES";
-const HISTORY_CACHE = "HISTORY_CACHE";
-const SORT_TYPE = "SORT_TYPE";
-const SORT_ORDER = "SORT_ORDER";
-let fundTempData = {today:{},history:[],loading:false};
+// 全局回调函数，处理接口返回的JSONP数据
+window.jsonpgz = function (data) {
+  const code = data.fundcode;
+  const name = data.name;
+  const rate = data.gszzl; // 估值涨跌幅，如 "+0.56"
+  const time = data.gztime; // 更新时间
 
-// 默认配置
-const defaultConfig = {
-    showDay:3, cacheDay:15, sellLine:0.1, buyLine:0.1,
-    tipRise:false, tipFall:false, tipInvest:false,
-    investPercent:2, investAmount:999
+  // 更新基金名称
+  const card = document.querySelector(`.fund-card[data-code="${code}"]`);
+  if (card) {
+    card.querySelector('.fund-name').textContent = name;
+    card.querySelector('.today').textContent = rate + '%';
+    document.getElementById('updateTime').textContent = time;
+  }
 };
 
-// 配置读写
-function getConfig(){
-    try{ return JSON.parse(localStorage.getItem(CONFIG)) || {...defaultConfig}; }
-    catch(e){ return {...defaultConfig}; }
-}
-function setConfig(c){ localStorage.setItem(CONFIG, JSON.stringify(c)); }
-
-// 板块基金读写
-function getPlates(){
-    try{ return JSON.parse(localStorage.getItem(PLATES)) || []; }
-    catch(e){ return []; }
-}
-function setPlates(p){ localStorage.setItem(PLATES, JSON.stringify(p)); }
-
-// 缓存工具
-function getHistoryCache(){ try{ return JSON.parse(localStorage.getItem(HISTORY_CACHE)) || {}; } catch(e){ return {}; } }
-function setHistoryCache(cache){ localStorage.setItem(HISTORY_CACHE, JSON.stringify(cache)); }
-
-// 清理超期缓存
-function clearExpireCache(){
-    const cfg = getConfig();
-    const cache = getHistoryCache();
-    const newCache = {};
-    Object.keys(cache).forEach(key=>{
-        if(Number(key) <= cfg.cacheDay) newCache[key] = cache[key];
-    });
-    setHistoryCache(newCache);
-}
-
-// 全局回调 JSONP 无跨域
-window.fundGzCallback = function(res){
-    if(res){
-        const code = res.code;
-        fundTempData.today[code] = {
-            val: Number(res.gszzl||0),
-            text: (res.gszzl||0)+"%",
-            cls: Number(res.gszzl||0)>=0 ? "text-red" : "text-green",
-            name: res.name
-        };
+// 刷新数据：遍历所有基金卡片，请求实时估值
+function refreshData() {
+  const cards = document.querySelectorAll('.fund-card');
+  cards.forEach(card => {
+    const code = card.dataset.code;
+    if (code) {
+      // 动态插入script标签，触发JSONP请求
+      const script = document.createElement('script');
+      script.src = `https://fundgz.1234567.com.cn/js/${code}.js?r=${Date.now()}`;
+      document.body.appendChild(script);
+      // 请求完成后移除script标签
+      script.onload = () => document.body.removeChild(script);
     }
-};
-window.fundLsCallback = function(res,dayIdx,code){
-    if(res && res.Data && res.Data.LSJZ && res.Data.LSJZ[0]){
-        const item = res.Data.LSJZ[0];
-        const cache = getHistoryCache();
-        if(!cache[dayIdx]) cache[dayIdx] = {};
-        cache[dayIdx][code] = {
-            val: Number(item.JZZZL||0),
-            text: (item.JZZZL||0)+"%",
-            cls: Number(item.JZZZL||0)>=0 ? "text-red" : "text-green"
-        };
-        setHistoryCache(cache);
-    }
-};
-
-// 移除旧script
-function removeScript(id){
-    const s = document.getElementById(id);
-    if(s) s.remove();
+  });
 }
 
-// 获取真实今日估值 JSONP 无跨域
-function getRealTodayData(funds){
-    return new Promise(resolve=>{
-        fundTempData.today = {};
-        let count = 0;
-        funds.forEach(code=>{
-            removeScript("gz_"+code);
-            const s = document.createElement("script");
-            s.id = "gz_"+code;
-            s.src = `https://fundgz.1234567.com.cn/js/${code}.js?rtime=${Date.now()}&callback=fundGzCallback`;
-            s.onload = ()=>{
-                count++;
-                if(count === funds.length) resolve();
-            };
-            s.onerror = ()=>{
-                count++;
-                if(count === funds.length) resolve();
-            };
-            document.body.appendChild(s);
-        });
-        if(funds.length === 0) resolve();
-    });
+// 页面加载时自动刷新一次
+window.onload = refreshData;
+
+// 底部按钮功能（占位，可后续扩展）
+function scrollToToday() {
+  document.querySelector('.today').scrollIntoView({ behavior: 'smooth' });
 }
-
-// 获取真实历史数据 JSONP 无跨域
-function getRealHistoryData(funds,dayIdx){
-    return new Promise(resolve=>{
-        const cache = getHistoryCache();
-        if(cache[dayIdx]) return resolve();
-        let count = 0;
-        funds.forEach(code=>{
-            removeScript("ls_"+code+"_"+dayIdx);
-            const s = document.createElement("script");
-            s.id = "ls_"+code+"_"+dayIdx;
-            s.src = `https://fund.eastmoney.com/f10/api/lspz_his.aspx?callback=function(res){fundLsCallback(res,${dayIdx},'${code}')}&fundCode=${code}&pageIndex=1&pageSize=1`;
-            s.onload = ()=>{
-                count++;
-                if(count === funds.length) resolve();
-            };
-            s.onerror = ()=>{
-                count++;
-                if(count === funds.length) resolve();
-            };
-            document.body.appendChild(s);
-        });
-        if(funds.length === 0) resolve();
-    });
+function showMoreOps() {
+  alert('可自行扩展更多操作');
 }
-
-// 批量获取所有历史真实数据
-async function getAllRealHistory(funds){
-    const cfg = getConfig();
-    clearExpireCache();
-    for(let i=1;i<=cfg.showDay;i++){
-        await getRealHistoryData(funds,i);
-    }
+function addFund() {
+  alert('可自行扩展添加基金');
 }
-
-// 组装数据
-async function fetchAllData(){
-    if(fundTempData.loading) return;
-    fundTempData.loading = true;
-    const cfg = getConfig();
-    const funds = getPlates().flatMap(p=>p.funds);
-    
-    await getRealTodayData(funds);
-    await getAllRealHistory(funds);
-    
-    fundTempData.history = [];
-    const cache = getHistoryCache();
-    for(let i=1;i<=cfg.showDay;i++){
-        fundTempData.history.push(cache[i]||{});
-    }
-    fundTempData.loading = false;
-    render();
-}
-
-// 排序
-function getSortT(){ return localStorage.getItem(SORT_TYPE) || "plate"; }
-function setSortT(t){ localStorage.setItem(SORT_TYPE, t); }
-function getSortO(){ return localStorage.getItem(SORT_ORDER) || "desc"; }
-function setSortO(o){ localStorage.setItem(SORT_ORDER, o); }
-
-// ===================== 修复：今日按钮 = 仅横向滚动到今日列，不请求、不刷新 =====================
-function scrollToToday(){
-    // 只滚动所有数据条到最左侧（今日列位置），无任何数据操作
-    document.querySelectorAll(".data-box").forEach(box => {
-        box.scrollTo({ left: 0, behavior: "smooth" });
-    });
-}
-
-// 渲染（保留原板块内排序逻辑，板块顺序不变）
-function render(){
-    const cfg = getConfig();
-    const originPlates = getPlates();
-    const sortType = getSortT();
-    const sortOrder = getSortO();
-    const box = document.getElementById("container");
-    let html = "";
-
-    if(sortType === "global"){
-        let allFundItems = [];
-        originPlates.forEach(p => {
-            p.funds.forEach(code => {
-                const today = fundTempData.today[code] || {val:0,text:"0%",cls:"text-red",name:"未知基金"};
-                const history = fundTempData.history.map(h=>h[code]||{val:0,text:"0%",cls:"text-red"});
-                allFundItems.push({plate:p.name,code,name:today.name,today,history});
-            });
-        });
-        allFundItems.sort((a,b)=> sortOrder==="desc" ? b.today.val - a.today.val : a.today.val - b.today.val);
-        allFundItems.forEach(item => html += renderCard(item));
-    }else{
-        originPlates.forEach(plate => {
-            let plateFundItems = [];
-            plate.funds.forEach(code => {
-                const today = fundTempData.today[code] || {val:0,text:"0%",cls:"text-red",name:"未知基金"};
-                const history = fundTempData.history.map(h=>h[code]||{val:0,text:"0%",cls:"text-red"});
-                plateFundItems.push({plate:plate.name,code,name:today.name,today,history});
-            });
-            plateFundItems.sort((a,b)=> sortOrder==="desc" ? b.today.val - a.today.val : a.today.val - b.today.val);
-            html += `<div class="plate-title">${plate.name}</div>`;
-            plateFundItems.forEach(item => html += renderCard(item));
-        });
-    }
-    box.innerHTML = html;
-    renderTip();
-    updateSortBtn();
-}
-
-// 卡片渲染
-function renderCard(item){
-    let dom = `
-    <div class="fund-card">
-        <div class="fund-info">
-            <div class="fund-name">${item.name}</div>
-            <div class="fund-code">${item.code}</div>
-            <div class="fund-btns">
-                <button class="btn-buy">买入</button>
-                <button class="btn-sell">卖出</button>
-            </div>
-        </div>
-        <div class="data-box">
-            <div class="data-row">
-                <div class="data-item" data-val="${item.today.val}">
-                    <span class="data-label">今日</span>
-                    <span class="${item.today.cls} data-value">${item.today.text}</span>
-                </div>`;
-    item.history.forEach((h,i)=>{
-        dom += `<div class="data-item"><span class="data-label">T-${i+1}</span><span class="${h.cls} data-value">${h.text}</span></div>`;
-    });
-    dom += `</div></div></div>`;
-    return dom;
-}
-
-// 提示渲染
-function renderTip(){
-    const cfg = getConfig();
-    document.querySelectorAll("[data-val]").forEach(el => {
-        const v = parseFloat(el.dataset.val);
-        el.querySelectorAll(".tip").forEach(t=>t.remove());
-        el.classList.remove("bg-sell","bg-buy","bg-invest");
-
-        if(cfg.sellLine>0 && v >= cfg.sellLine){
-            const t = document.createElement("span");
-            t.className="tip tip-sell"; t.textContent="达到卖出阈值";
-            el.appendChild(t); el.classList.add("bg-sell");
-        }
-        if(cfg.buyLine>0 && v <= -cfg.buyLine){
-            const t = document.createElement("span");
-            t.className="tip tip-buy"; t.textContent="达到买入阈值";
-            el.appendChild(t); el.classList.add("bg-buy");
-
-            if(cfg.tipInvest && cfg.investPercent>0 && v < -cfg.investPercent){
-                const t2 = document.createElement("span");
-                t2.className="tip tip-invest"; t2.textContent=`达到定投阈值，定投${cfg.investAmount}元`;
-                el.appendChild(t2); el.classList.add("bg-invest");
-            }
-        }
-    });
-}
-
-function updateSortBtn(){
-    const st = getSortT();
-    const so = getSortO();
-    document.getElementById("globalSort").classList.toggle("active", st==="global");
-    document.getElementById("plateSort").classList.toggle("active", st==="plate");
-    document.getElementById("orderSort").textContent = so==="desc"?"跌序":"涨序";
-}
-
-function bindSwitch(){
-    document.querySelectorAll(".switch").forEach(sw => sw.onclick = ()=>sw.classList.toggle("on"));
-}
-
-document.getElementById("globalSort").onclick = ()=>{ setSortT("global"); render(); }
-document.getElementById("plateSort").onclick = ()=>{ setSortT("plate"); render(); }
-document.getElementById("orderSort").onclick = ()=>{ setSortO(getSortO()==="desc"?"asc":"desc"); render(); }
-
-// 刷新：只在这里触发数据请求
-function refreshData(){
-    document.getElementById("timeText").textContent = new Date().toLocaleString();
-    fetchAllData();
-}
-
-// 设置弹窗
-function openSet(){
-    const cfg = getConfig();
-    document.getElementById("showDay").value = cfg.showDay;
-    document.getElementById("cacheDay").value = cfg.cacheDay;
-    document.getElementById("sellLine").value = cfg.sellLine;
-    document.getElementById("buyLine").value = cfg.buyLine;
-    document.getElementById("tipRise").classList.toggle("on", cfg.tipRise);
-    document.getElementById("tipFall").classList.toggle("on", cfg.tipFall);
-    document.getElementById("tipInvest").classList.toggle("on", cfg.tipInvest);
-    document.getElementById("investPercent").value = cfg.investPercent;
-    document.getElementById("investAmount").value = cfg.investAmount;
-    document.getElementById("setMask").style.display = "flex";
-}
-function closeSet(){ document.getElementById("setMask").style.display = "none"; }
-function saveSet(){
-    const c = {
-        showDay:parseInt(document.getElementById("showDay").value)||3,
-        cacheDay:parseInt(document.getElementById("cacheDay").value)||15,
-        sellLine:parseFloat(document.getElementById("sellLine").value)||0.1,
-        buyLine:parseFloat(document.getElementById("buyLine").value)||0.1,
-        tipRise:document.getElementById("tipRise").classList.contains("on"),
-        tipFall:document.getElementById("tipFall").classList.contains("on"),
-        tipInvest:document.getElementById("tipInvest").classList.contains("on"),
-        investPercent:parseFloat(document.getElementById("investPercent").value)||2,
-        investAmount:parseInt(document.getElementById("investAmount").value)||999
-    };
-    setConfig(c); closeSet(); fetchAllData();
-}
-
-// 添加数据功能
-function openAdd(){ renderPlateList(); document.getElementById("addMask").style.display = "flex"; }
-function closeAdd(){ document.getElementById("addMask").style.display = "none"; }
-
-function renderPlateList(){
-    const ps = getPlates();
-    let h = "";
-    ps.forEach((p,i)=>{
-        h += `<div class="list-item"><span>${p.name}</span><button class="btn-danger" onclick="delPlate(${i})">删除</button></div>`;
-    });
-    document.getElementById("plateList").innerHTML = h || "<div class='list-item'><span>暂无板块</span></div>";
-    renderSelPlate();
-}
-
-function renderSelPlate(){
-    const ps = getPlates();
-    let h = `<option value="">--选择板块--</option>`;
-    ps.forEach((p,i)=> h += `<option value="${i}">${p.name}</option>`);
-    document.getElementById("selPlate").innerHTML = h;
-    renderSelFund();
-}
-
-function renderSelFund(){
-    const ps = getPlates();
-    const idx = document.getElementById("selPlate").value;
-    const box = document.getElementById("fundList");
-    if(!idx || !ps[idx]){ box.innerHTML = "<div class='list-item'><span>请选择板块</span></div>"; return; }
-    const fs = ps[idx].funds;
-    let h = "";
-    if(!fs.length) h = "<div class='list-item'><span>暂无基金</span></div>";
-    else fs.forEach((code,i)=>{
-        h += `<div class="list-item"><span>${code}</span><button class="btn-danger" onclick="delFund(${idx},${i})">删除</button></div>`;
-    });
-    box.innerHTML = h;
-}
-
-function addPlate(){
-    const name = document.getElementById("newPlate").value.trim();
-    if(!name){ alert("请输入板块名"); return; }
-    const ps = getPlates();
-    ps.push({name, funds:[]});
-    setPlates(ps);
-    document.getElementById("newPlate").value = "";
-    renderPlateList();
-}
-
-function delPlate(i){
-    if(!confirm("确认删除？")) return;
-    const ps = getPlates();
-    ps.splice(i,1);
-    setPlates(ps);
-    renderPlateList(); fetchAllData();
-}
-
-function addFund(){
-    const idx = document.getElementById("selPlate").value;
-    const code = document.getElementById("fundCode").value.trim();
-    if(!idx || !code){ alert("请选择板块并输入代码"); return; }
-    const ps = getPlates();
-    ps[idx].funds.push(code);
-    setPlates(ps);
-    document.getElementById("fundCode").value = "";
-    renderSelFund(); fetchAllData();
-}
-
-function delFund(pIdx,fIdx){
-    if(!confirm("确认删除？")) return;
-    const ps = getPlates();
-    ps[pIdx].funds.splice(fIdx,1);
-    setPlates(ps);
-    renderSelFund(); fetchAllData();
-}
-
-function batchImport(){
-    const text = document.getElementById("batchText").value.trim();
-    if(!text){ alert("请输入内容"); return; }
-    const arr = text.split("\n").map(i=>i.trim()).filter(i=>i);
-    const ps = getPlates();
-    let curr = null;
-    arr.forEach(i=>{
-        if(!/^\d+$/.test(i)){ curr = {name:i, funds:[]}; ps.push(curr); }
-        else if(curr) curr.funds.push(i);
-    });
-    setPlates(ps);
-    closeAdd(); fetchAllData();
-}
-
-// 初始化
-window.onload = ()=>{
-    bindSwitch();
-    refreshData();
-    document.getElementById("selPlate").onchange = renderSelFund;
+function switchTab(mode) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+  // 可根据mode实现全局/板块/排序逻辑
 }
 </script>
 </body>
