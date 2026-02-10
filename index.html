@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-    <title>基金行情（排序逻辑修正版）</title>
+    <title>基金行情（带排序箭头版）</title>
     <style>
         * {
             margin: 0;
@@ -75,6 +75,9 @@
         .sort-btn.active {
             background: var(--primary);
             color: #fff;
+        }
+        .sort-arrow {
+            margin-left: 4px;
         }
 
         .top-time {
@@ -313,12 +316,12 @@
     <!-- 顶部板块Tab栏 -->
     <div class="tab-bar" id="tabBar"></div>
 
-    <!-- 多维度排序栏 -->
+    <!-- 多维度排序栏（带箭头） -->
     <div class="sort-bar">
-        <button class="sort-btn active" data-key="today">今日</button>
-        <button class="sort-btn" data-key="3d">3日</button>
-        <button class="sort-btn" data-key="7d">7日</button>
-        <button class="sort-btn" data-key="30d">1月</button>
+        <button class="sort-btn active" data-key="today">今日 <span class="sort-arrow">↓</span></button>
+        <button class="sort-btn" data-key="3d">3日 <span class="sort-arrow"></span></button>
+        <button class="sort-btn" data-key="7d">7日 <span class="sort-arrow"></span></button>
+        <button class="sort-btn" data-key="30d">1月 <span class="sort-arrow"></span></button>
     </div>
 
     <div class="data-tip" id="dataTip"></div>
@@ -722,7 +725,7 @@
             render();
         }
 
-        // ===================== 多维度排序逻辑 =====================
+        // ===================== 多维度排序逻辑（带箭头） =====================
         document.querySelectorAll(".sort-btn").forEach(btn => {
             btn.onclick = () => {
                 if (currentSort === btn.dataset.key) {
@@ -731,8 +734,13 @@
                     currentSort = btn.dataset.key;
                     sortOrder = "desc";
                 }
-                document.querySelectorAll(".sort-btn").forEach(b => b.classList.remove("active"));
+                // 更新所有按钮的样式和箭头
+                document.querySelectorAll(".sort-btn").forEach(b => {
+                    b.classList.remove("active");
+                    b.querySelector(".sort-arrow").textContent = "";
+                });
                 btn.classList.add("active");
+                btn.querySelector(".sort-arrow").textContent = sortOrder === "desc" ? "↓" : "↑";
                 render();
             };
         });
