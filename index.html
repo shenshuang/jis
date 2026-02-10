@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-    <title>基金行情（稳定版）</title>
+    <title>基金行情（快速版）</title>
     <style>
         * {
             margin: 0;
@@ -267,10 +267,26 @@
         }
         .switch.on { background: var(--primary); }
         .switch.on::after { left: 22px; }
+        /* 加载提示样式 */
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.9);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            color: var(--text);
+            z-index: 9999;
+            display: none;
+        }
     </style>
 </head>
 <body>
 <div class="top-time" id="timeText"></div>
+<!-- 加载提示 -->
+<div class="loading" id="loadingTip">加载中...</div>
 
 <div class="header">
     <div class="sort-group">
@@ -382,7 +398,11 @@ const defaultConfig = {
     investPercent: 2, investAmount: 999
 };
 
-// ===================== 本地存储读写（确保数据持久化）=====================
+// ===================== 工具函数 =====================
+function showLoading() { document.getElementById("loadingTip").style.display = "block"; }
+function hideLoading() { document.getElementById("loadingTip").style.display = "none"; }
+
+// 本地存储读写
 function getConfig() {
     try { return JSON.parse(localStorage.getItem(CONFIG)) || { ...defaultConfig }; }
     catch (e) { return { ...defaultConfig }; }
@@ -401,7 +421,7 @@ function getHistoryCache() {
 }
 function setHistoryCache(cache) { localStorage.setItem(HISTORY_CACHE, JSON.stringify(cache)); }
 
-// 清理超期缓存（按配置的cacheDay保留）
+// 清理超期缓存
 function clearExpireCache() {
     const cfg = getConfig();
     const cache = getHistoryCache();
@@ -412,15 +432,21 @@ function clearExpireCache() {
     setHistoryCache(newCache);
 }
 
-// ===================== 替换为稳定接口（解决加载失败问题）=====================
-// 1. 今日实时估值接口（使用天天基金官方JSONP接口，回调固定为jsonpgz）
+// 移除script标签
+function removeScript(id) {
+    const s = document.getElementById(id);
+    if (s) s.remove();
+}
+
+// ===================== 优化后接口请求逻辑 =====================
+// 1. 今日实时估值（并行请求，减少等待）
 window.jsonpgz = function (res) {
     if (res && res.fundcode) {
         const code = res.fundcode;
-        const gszzl = Number(res.gszzl || 0); // 实时涨跌幅
+        const gszzl = Number(res.gszzl || 0);
         fundTempData.today[code] = {
             val: gszzl,
-            text: gszzl.toFixed(2) + "%", // 保留2位小数
+            text: gszzl.toFixed(2) + "%",
             cls: gszzl >= 0 ? "text-red" : "text-green",
             name: res.name || "未知基金",
             time: res.gztime || new Date().toLocaleTimeString()
@@ -428,62 +454,18 @@ window.jsonpgz = function (res) {
     }
 };
 
-// 2. 历史净值接口（使用天天基金历史接口，更稳定）
-function getRealHistoryData(code, dayIdx) {
-    return new Promise(resolve => {
-        const s = document.createElement("script");
-        s.id = `ls_${code}_${dayIdx}`;
-        // 天天基金历史接口（page=${dayIdx} 表示第dayIdx天前的数据）
-        s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
-        s.onload = function() {
-            try {
-                // 接口返回的全局变量是fundinfo（包含历史净值）
-                const fundInfo = window.fundinfo;
-                if (fundInfo && fundInfo.LSJZList && fundInfo.LSJZList.length >= dayIdx) {
-                    const item = fundInfo.LSJZList[dayIdx - 1]; // 取第dayIdx天前的数据
-                    const jzzzl = Number(item.JZZZL || 0);
-                    const cache = getHistoryCache();
-                    if (!cache[dayIdx]) cache[dayIdx] = {};
-                    cache[dayIdx][code] = {
-                        val: jzzzl,
-                        text: jzzzl.toFixed(2) + "%",
-                        cls: jzzzl >= 0 ? "text-red" : "text-green",
-                        date: item.FSRQ || ""
-                    };
-                    setHistoryCache(cache);
-                }
-            } catch (e) {}
-            resolve();
-            removeScript(s.id);
-            delete window.fundinfo; // 清理全局变量
-        };
-        s.onerror = function() {
-            resolve();
-            removeScript(s.id);
-        };
-        document.body.appendChild(s);
-    });
-}
-
-// 移除已加载的script标签（避免冗余）
-function removeScript(id) {
-    const s = document.getElementById(id);
-    if (s) s.remove();
-}
-
-// 拉取今日真实数据（批量请求所有基金）
 function getRealTodayData(funds) {
     return new Promise(resolve => {
         fundTempData.today = {};
-        let count = 0;
         const total = funds.length;
         if (total === 0) { resolve(); return; }
 
+        let count = 0;
+        // 并行请求所有基金今日数据
         funds.forEach(code => {
             removeScript("gz_" + code);
             const s = document.createElement("script");
             s.id = "gz_" + code;
-            // 稳定接口：天天基金JSONP（回调固定为jsonpgz）
             s.src = `https://fundgz.1234567.com.cn/js/${code}.js?rtime=${Date.now()}`;
             s.onload = () => {
                 count++;
@@ -499,56 +481,107 @@ function getRealTodayData(funds) {
     });
 }
 
-// 批量拉取所有历史真实数据（按配置的showDay拉取T-1~T-showDay）
+// 2. 历史净值（并行请求同天数据，优先用缓存）
+function getRealHistoryData(code, dayIdx) {
+    return new Promise(resolve => {
+        const cache = getHistoryCache();
+        // 缓存存在则直接返回，不重复请求
+        if (cache[dayIdx] && cache[dayIdx][code]) {
+            resolve();
+            return;
+        }
+
+        const s = document.createElement("script");
+        s.id = `ls_${code}_${dayIdx}`;
+        s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
+        s.onload = function() {
+            try {
+                const fundInfo = window.fundinfo;
+                if (fundInfo && fundInfo.LSJZList && fundInfo.LSJZList.length >= dayIdx) {
+                    const item = fundInfo.LSJZList[dayIdx - 1];
+                    const jzzzl = Number(item.JZZZL || 0);
+                    const cache = getHistoryCache();
+                    if (!cache[dayIdx]) cache[dayIdx] = {};
+                    cache[dayIdx][code] = {
+                        val: jzzzl,
+                        text: jzzzl.toFixed(2) + "%",
+                        cls: jzzzl >= 0 ? "text-red" : "text-green",
+                        date: item.FSRQ || ""
+                    };
+                    setHistoryCache(cache);
+                }
+            } catch (e) {}
+            resolve();
+            removeScript(s.id);
+            delete window.fundinfo;
+        };
+        s.onerror = function() {
+            resolve();
+            removeScript(s.id);
+        };
+        document.body.appendChild(s);
+    });
+}
+
+// 批量拉取历史数据（按天并行，每天内部并行）
 async function getAllRealHistory(funds) {
     const cfg = getConfig();
-    clearExpireCache(); // 先清理超期缓存
+    clearExpireCache();
+    const cache = getHistoryCache();
+
+    // 按天数循环，每天的所有基金并行请求
     for (let i = 1; i <= cfg.showDay; i++) {
-        for (const code of funds) {
-            await getRealHistoryData(code, i); // 逐个基金拉取历史数据
-        }
+        // 过滤出该天没有缓存的基金，只请求需要的
+        const needRequestFunds = funds.filter(code => !cache[i] || !cache[i][code]);
+        if (needRequestFunds.length === 0) continue;
+
+        // 并行请求该天的所有基金数据
+        await Promise.all(
+            needRequestFunds.map(code => getRealHistoryData(code, i))
+        );
     }
 }
 
-// 整合今日+历史数据，统一渲染
+// ===================== 核心逻辑 =====================
 async function fetchAllData() {
-    if (fundTempData.loading) return; // 防止重复请求
+    if (fundTempData.loading) return;
     fundTempData.loading = true;
+    showLoading();
 
     const cfg = getConfig();
     const plates = getPlates();
-    const allFunds = plates.flatMap(p => p.funds).filter(code => code); // 所有基金代码去重
+    const allFunds = [...new Set(plates.flatMap(p => p.funds).filter(code => code))]; // 去重
 
-    // 先拉今日数据，再拉历史数据
-    await getRealTodayData(allFunds);
-    await getAllRealHistory(allFunds);
+    try {
+        // 今日数据和历史数据并行拉取（进一步提速）
+        await Promise.all([
+            getRealTodayData(allFunds),
+            getAllRealHistory(allFunds)
+        ]);
 
-    // 组装历史数据数组（T-1~T-showDay）
-    fundTempData.history = [];
-    const cache = getHistoryCache();
-    for (let i = 1; i <= cfg.showDay; i++) {
-        fundTempData.history.push(cache[i] || {});
+        // 组装历史数据
+        fundTempData.history = [];
+        const cache = getHistoryCache();
+        for (let i = 1; i <= cfg.showDay; i++) {
+            fundTempData.history.push(cache[i] || {});
+        }
+    } catch (e) {
+        console.error("数据加载失败:", e);
     }
 
     fundTempData.loading = false;
-    render(); // 数据就绪后渲染页面
+    hideLoading();
+    render();
 }
 
-// ===================== 排序功能 =====================
-function getSortType() { return localStorage.getItem(SORT_TYPE) || "plate"; }
-function setSortType(t) { localStorage.setItem(SORT_TYPE, t); }
-function getSortOrder() { return localStorage.getItem(SORT_ORDER) || "desc"; }
-function setSortOrder(o) { localStorage.setItem(SORT_ORDER, o); }
-
-// ===================== 核心操作功能 =====================
-// 今日按钮：仅横向滚动到今日列（无任何数据操作）
+// 今日按钮：仅滚动
 function scrollToToday() {
     document.querySelectorAll(".data-box").forEach(box => {
         box.scrollTo({ left: 0, behavior: "smooth" });
     });
 }
 
-// 刷新按钮：重新拉取所有真实数据
+// 刷新按钮：重新拉取数据
 function refreshData() {
     const now = new Date().toLocaleString();
     document.getElementById("timeText").textContent = `最后刷新：${now}`;
@@ -556,17 +589,15 @@ function refreshData() {
 }
 
 // ===================== 页面渲染 =====================
-// 主渲染函数（保留板块顺序，支持全局/板块内排序）
 function render() {
     const cfg = getConfig();
     const originPlates = getPlates();
-    const sortType = getSortType();
-    const sortOrder = getSortOrder();
+    const sortType = localStorage.getItem(SORT_TYPE) || "plate";
+    const sortOrder = localStorage.getItem(SORT_ORDER) || "desc";
     const container = document.getElementById("container");
     let html = "";
 
     if (sortType === "global") {
-        // 全局排序：所有基金按今日涨跌幅排序
         let allFunds = [];
         originPlates.forEach(plate => {
             plate.funds.forEach(code => {
@@ -575,11 +606,9 @@ function render() {
                 allFunds.push({ plate: plate.name, code, name: today.name, today, history });
             });
         });
-        // 按涨跌幅排序（desc=从高到低，asc=从低到高）
         allFunds.sort((a, b) => sortOrder === "desc" ? b.today.val - a.today.val : a.today.val - b.today.val);
         allFunds.forEach(item => html += renderFundCard(item));
     } else {
-        // 板块内排序：每个板块内基金按今日涨跌幅排序
         originPlates.forEach(plate => {
             let plateFunds = [];
             plate.funds.forEach(code => {
@@ -587,7 +616,6 @@ function render() {
                 const history = fundTempData.history.map(h => h[code] || { val: 0, text: "0.00%", cls: "text-red" });
                 plateFunds.push({ plate: plate.name, code, name: today.name, today, history });
             });
-            // 板块内排序
             plateFunds.sort((a, b) => sortOrder === "desc" ? b.today.val - a.today.val : a.today.val - b.today.val);
             html += `<div class="plate-title">${plate.name}</div>`;
             plateFunds.forEach(item => html += renderFundCard(item));
@@ -595,11 +623,10 @@ function render() {
     }
 
     container.innerHTML = html;
-    renderTips(); // 渲染阈值提示
-    updateSortButtons(); // 更新排序按钮状态
+    renderTips();
+    updateSortButtons();
 }
 
-// 渲染单个基金卡片
 function renderFundCard(item) {
     let cardHtml = `
     <div class="fund-card">
@@ -613,13 +640,11 @@ function renderFundCard(item) {
         </div>
         <div class="data-box">
             <div class="data-row">
-                <!-- 今日数据 -->
                 <div class="data-item" data-val="${item.today.val}">
                     <span class="data-label">今日</span>
                     <span class="${item.today.cls} data-value">${item.today.text}</span>
                 </div>`;
 
-    // 历史数据（T-1~T-showDay）
     item.history.forEach((h, i) => {
         cardHtml += `
         <div class="data-item">
@@ -633,16 +658,13 @@ function renderFundCard(item) {
     return cardHtml;
 }
 
-// 渲染阈值提示（卖出/买入/定投）
 function renderTips() {
     const cfg = getConfig();
     document.querySelectorAll("[data-val]").forEach(el => {
         const val = parseFloat(el.dataset.val);
-        // 清除原有提示
         el.querySelectorAll(".tip").forEach(t => t.remove());
         el.classList.remove("bg-sell", "bg-buy", "bg-invest");
 
-        // 卖出阈值提示
         if (cfg.sellLine > 0 && val >= cfg.sellLine) {
             const tip = document.createElement("span");
             tip.className = "tip tip-sell";
@@ -651,7 +673,6 @@ function renderTips() {
             el.classList.add("bg-sell");
         }
 
-        // 买入阈值提示
         if (cfg.buyLine > 0 && val <= -cfg.buyLine) {
             const tip = document.createElement("span");
             tip.className = "tip tip-buy";
@@ -659,7 +680,6 @@ function renderTips() {
             el.appendChild(tip);
             el.classList.add("bg-buy");
 
-            // 定投阈值提示
             if (cfg.tipInvest && cfg.investPercent > 0 && val < -cfg.investPercent) {
                 const investTip = document.createElement("span");
                 investTip.className = "tip tip-invest";
@@ -671,29 +691,25 @@ function renderTips() {
     });
 }
 
-// 更新排序按钮状态
 function updateSortButtons() {
-    const sortType = getSortType();
-    const sortOrder = getSortOrder();
+    const sortType = localStorage.getItem(SORT_TYPE) || "plate";
+    const sortOrder = localStorage.getItem(SORT_ORDER) || "desc";
     document.getElementById("globalSort").classList.toggle("active", sortType === "global");
     document.getElementById("plateSort").classList.toggle("active", sortType === "plate");
     document.getElementById("orderSort").textContent = sortOrder === "desc" ? "跌序" : "涨序";
 }
 
-// ===================== 弹窗操作功能 =====================
-// 开关按钮绑定
+// ===================== 弹窗操作 =====================
 function bindSwitchButtons() {
     document.querySelectorAll(".switch").forEach(sw => {
         sw.onclick = () => sw.classList.toggle("on");
     });
 }
 
-// 排序按钮绑定
-document.getElementById("globalSort").onclick = () => { setSortType("global"); render(); };
-document.getElementById("plateSort").onclick = () => { setSortType("plate"); render(); };
-document.getElementById("orderSort").onclick = () => { setSortOrder(getSortOrder() === "desc" ? "asc" : "desc"); render(); };
+document.getElementById("globalSort").onclick = () => { localStorage.setItem(SORT_TYPE, "global"); render(); };
+document.getElementById("plateSort").onclick = () => { localStorage.setItem(SORT_TYPE, "plate"); render(); };
+document.getElementById("orderSort").onclick = () => { localStorage.setItem(SORT_ORDER, localStorage.getItem(SORT_ORDER) === "desc" ? "asc" : "desc"); render(); };
 
-// 设置弹窗
 function openSet() {
     const cfg = getConfig();
     document.getElementById("showDay").value = cfg.showDay;
@@ -708,9 +724,7 @@ function openSet() {
     document.getElementById("setMask").style.display = "flex";
 }
 
-function closeSet() {
-    document.getElementById("setMask").style.display = "none";
-}
+function closeSet() { document.getElementById("setMask").style.display = "none"; }
 
 function saveSet() {
     const newConfig = {
@@ -726,20 +740,16 @@ function saveSet() {
     };
     setConfig(newConfig);
     closeSet();
-    fetchAllData(); // 配置变更后重新拉取数据
+    fetchAllData();
 }
 
-// 添加数据弹窗
 function openAdd() {
     renderPlateList();
     document.getElementById("addMask").style.display = "flex";
 }
 
-function closeAdd() {
-    document.getElementById("addMask").style.display = "none";
-}
+function closeAdd() { document.getElementById("addMask").style.display = "none"; }
 
-// 渲染板块列表
 function renderPlateList() {
     const plates = getPlates();
     let plateHtml = "";
@@ -750,7 +760,6 @@ function renderPlateList() {
     renderSelectPlate();
 }
 
-// 渲染板块选择下拉框
 function renderSelectPlate() {
     const plates = getPlates();
     let selectHtml = `<option value="">--选择板块--</option>`;
@@ -758,10 +767,9 @@ function renderSelectPlate() {
         selectHtml += `<option value="${i}">${p.name}</option>`;
     });
     document.getElementById("selPlate").innerHTML = selectHtml;
-    renderSelectFund(); // 同步渲染选中板块的基金列表
+    renderSelectFund();
 }
 
-// 渲染选中板块的基金列表
 function renderSelectFund() {
     const plates = getPlates();
     const plateIndex = document.getElementById("selPlate").value;
@@ -784,25 +792,17 @@ function renderSelectFund() {
     fundListBox.innerHTML = fundHtml;
 }
 
-// 创建板块
 function addPlate() {
     const plateName = document.getElementById("newPlate").value.trim();
-    if (!plateName) {
-        alert("请输入有效的板块名称");
-        return;
-    }
+    if (!plateName) { alert("请输入有效的板块名称"); return; }
     const plates = getPlates();
-    if (plates.some(p => p.name === plateName)) {
-        alert("该板块已存在");
-        return;
-    }
+    if (plates.some(p => p.name === plateName)) { alert("该板块已存在"); return; }
     plates.push({ name: plateName, funds: [] });
     setPlates(plates);
     document.getElementById("newPlate").value = "";
     renderPlateList();
 }
 
-// 删除板块
 function deletePlate(index) {
     if (!confirm("确认删除该板块及包含的所有基金？")) return;
     const plates = getPlates();
@@ -812,31 +812,20 @@ function deletePlate(index) {
     fetchAllData();
 }
 
-// 添加基金
 function addFund() {
     const plateIndex = document.getElementById("selPlate").value;
     const fundCode = document.getElementById("fundCode").value.trim();
-    if (!plateIndex) {
-        alert("请先选择板块");
-        return;
-    }
-    if (!fundCode || !/^\d{6}$/.test(fundCode)) {
-        alert("请输入6位数字的基金代码");
-        return;
-    }
+    if (!plateIndex) { alert("请先选择板块"); return; }
+    if (!fundCode || !/^\d{6}$/.test(fundCode)) { alert("请输入6位数字的基金代码"); return; }
     const plates = getPlates();
-    if (plates[plateIndex].funds.includes(fundCode)) {
-        alert("该基金已在当前板块中");
-        return;
-    }
+    if (plates[plateIndex].funds.includes(fundCode)) { alert("该基金已在当前板块中"); return; }
     plates[plateIndex].funds.push(fundCode);
     setPlates(plates);
     document.getElementById("fundCode").value = "";
     renderSelectFund();
-    fetchAllData(); // 新增基金后立即拉取数据
+    fetchAllData();
 }
 
-// 删除基金
 function deleteFund(plateIndex, fundIndex) {
     if (!confirm("确认删除该基金？")) return;
     const plates = getPlates();
@@ -846,25 +835,19 @@ function deleteFund(plateIndex, fundIndex) {
     fetchAllData();
 }
 
-// 批量导入基金（格式：板块名+换行+基金代码，多行重复）
 function batchImport() {
     const text = document.getElementById("batchText").value.trim();
-    if (!text) {
-        alert("请输入导入内容");
-        return;
-    }
+    if (!text) { alert("请输入导入内容"); return; }
     const lines = text.split("\n").map(line => line.trim()).filter(line => line);
     const plates = getPlates();
     let currentPlate = null;
 
     lines.forEach(line => {
         if (/^\d{6}$/.test(line)) {
-            // 基金代码：添加到当前板块
             if (currentPlate && !currentPlate.funds.includes(line)) {
                 currentPlate.funds.push(line);
             }
         } else {
-            // 板块名：创建或查找板块
             let plate = plates.find(p => p.name === line);
             if (!plate) {
                 plate = { name: line, funds: [] };
@@ -883,8 +866,8 @@ function batchImport() {
 // ===================== 初始化 =====================
 window.onload = () => {
     bindSwitchButtons();
-    document.getElementById("selPlate").onchange = renderSelectFund; // 板块选择变更时同步渲染基金列表
-    refreshData(); // 页面加载后自动拉取真实数据
+    document.getElementById("selPlate").onchange = renderSelectFund;
+    fetchAllData(); // 页面加载时拉取数据
 };
 </script>
 </body>
