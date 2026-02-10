@@ -295,7 +295,7 @@
         
         <div class="form-item">
             <label>接口获取失败默认基金名</label>
-            <input type="text" id="failName" value="狗屁基金">
+            <input type="text" id="failName" value="获取失败">
         </div>
         <div class="form-item">
             <label>失败默认涨跌幅</label>
@@ -334,7 +334,7 @@ const FAIL_SETTINGS = "FAIL_SETTINGS";
 const API_SETTINGS = "API_SETTINGS";
 
 const DEFAULT_FAIL_VALUE = 9876543210;
-const DEFAULT_FAIL_NAME = "狗屁基金";
+const DEFAULT_FAIL_NAME = "获取失败";
 
 let fundTempData = { today: {}, history: [], loading: false };
 let currentTab = "all";
@@ -439,24 +439,39 @@ function copyCode(code) {
     navigator.clipboard.writeText(code).then(()=>alert("已复制基金代码："+code)).catch(()=>alert("复制失败"));
 }
 
+// 修复实时估值接口：等待jsonpgz回调确认数据有效
+window._gzResolve = null;
 window.jsonpgz = res => {
     window._testGzRes = res;
-    if (!res || !res.fundcode) return;
+    if (!res || !res.fundcode) {
+        if (window._gzResolve) {
+            window._gzResolve(false);
+            window._gzResolve = null;
+        }
+        return;
+    }
     const v = Number(res.gszzl || 0);
     const fail = getFailSettings();
     fundTempData.today[res.fundcode] = {
         val: v, text: v.toFixed(2)+"%", cls: v>=0?"text-red":"text-green", name: res.name || fail.name
     };
+    if (window._gzResolve) {
+        window._gzResolve(true);
+        window._gzResolve = null;
+    }
 };
 
 function requestGz(code) {
     return new Promise(resolve => {
         removeScript("gz_"+code);
+        window._gzResolve = resolve;
         const s = document.createElement("script");
         s.id = "gz_"+code;
         s.src = `https://fundgz.1234567.com.cn/js/${code}.js?${Date.now()}`;
-        s.onload = ()=>resolve(true);
-        s.onerror = ()=>resolve(false);
+        s.onerror = () => {
+            window._gzResolve = null;
+            resolve(false);
+        };
         document.body.appendChild(s);
     });
 }
@@ -494,7 +509,7 @@ async function getTodayData(funds) {
         funds.forEach(code => {
             retry(()=>requestGz(code), api.retryGz).then(ok=>{
                 if(!ok || !fundTempData.today[code]){
-                    fundTempData.today[code] = {val:fail.rate, text:fail.rate+"", cls:"text-gray", name:fail.name};
+                    fundTempData.today[code] = {val:fail.rate, text:"失败", cls:"text-gray", name:fail.name};
                 }
                 done++;
                 if(done === funds.length) resolve();
@@ -599,12 +614,12 @@ function render() {
     let funds = currentTab==="all"?[...new Set(getPlates().flatMap(p=>p.funds).filter(Boolean))]:(getPlates()[currentTab]?.funds||[]);
 
     let list = funds.map(code=>{
-        const td = fundTempData.today[code] || {val:fail.rate, text:fail.rate+"", cls:"text-gray", name:fail.name};
+        const td = fundTempData.today[code] || {val:fail.rate, text:"失败", cls:"text-gray", name:fail.name};
         return {
             code, name:td.name, today:td.val,
             "3d":calcTotal(code,3), "7d":calcTotal(code,7), "30d":calcTotal(code,30),
             todayData:td,
-            historyData:fundTempData.history.map(h=>h[code]||{val:fail.rate, text:fail.rate+"", cls:"text-gray", date:""})
+            historyData:fundTempData.history.map(h=>h[code]||{val:fail.rate, text:"无数据", cls:"text-gray", date:""})
         };
     });
 
@@ -633,7 +648,7 @@ function render() {
                     </div>`;
         item.historyData.forEach((h,i)=>{
             let txt=h.text, cls=h.cls;
-            if(h.val===fail.rate){txt="失败";cls="text-gray";}
+            if(h.val===fail.rate){txt="无数据";cls="text-gray";}
             html+=`
                     <div class="data-item">
                         <span class="data-label">T-${i+1}</span>
